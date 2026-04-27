@@ -278,11 +278,11 @@ def simulate_wealth(params):
                 stock_lots.append({'basis': contrib, 'value': contrib})
             
             stock_balance_before_vp = sum(lot['value'] for lot in stock_lots)
-            vp_tax, sparerpauschbetrag = calc_vorabpauschale(stock_start, stock_balance_before_vp, params['basiszinssatz']/100.0, sparerpauschbetrag)
+            vp_tax, sparerpauschbetrag = calc_vorabpauschale(stock_start, stock_balance_before_vp, params['basiszinssatz']/100.0, sparerpauschbetrag, contrib=contrib)
             stock_tax_vp = vp_tax
             
             if stock_balance_before_vp > 0:
-                vp_base_total = min(stock_start * (params['basiszinssatz']/100.0) * 0.7, max(0, stock_balance_before_vp - stock_start))
+                vp_base_total = min(stock_start * (params['basiszinssatz']/100.0) * 0.7, max(0, stock_balance_before_vp - stock_start - contrib))
                 for lot in stock_lots:
                     fraction = lot['value'] / stock_balance_before_vp
                     lot['basis'] += vp_base_total * fraction
