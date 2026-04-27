@@ -1,8 +1,8 @@
 import pandas as pd
 
-def calc_vorabpauschale(value_start, value_end, basiszinssatz, sparerpauschbetrag):
+def calc_vorabpauschale(value_start, value_end, basiszinssatz, sparerpauschbetrag, contrib=0.0):
     """Calculates Vorabpauschale with 30% Teilfreistellung and applies Sparerpauschbetrag."""
-    wertzuwachs = max(0, value_end - value_start)
+    wertzuwachs = max(0, value_end - value_start - contrib)
     basisertrag = value_start * basiszinssatz * 0.7
     vorabpauschale = min(basisertrag, wertzuwachs)
     
@@ -43,9 +43,11 @@ def simulate_wealth(params):
     # Initial Balances
     stock_balance = params['stock_initial']
     stock_basis = params['stock_initial']
+    stock_lots = [{'basis': stock_basis, 'value': stock_balance}] if stock_balance > 0 else []
     
     priv_balance = params['priv_initial']
     priv_basis = params['priv_initial']
+    priv_lots = [{'basis': priv_basis, 'value': priv_balance}] if priv_balance > 0 else []
     
     ep = params['current_ep']
     
@@ -96,7 +98,7 @@ def simulate_wealth(params):
             ep += min(user_salary_gross / deflator, 101400) / 51944.0
             
         if current_year_age >= state_ret_age:
-            state_pension_gross = ep * 40.79 * 12 * deflator
+            state_pension_gross = ep * 42.52 * 12 * deflator
             
         # --- MODULE 2: Private Pension ---
         priv_payout_gross = 0
@@ -108,18 +110,32 @@ def simulate_wealth(params):
         if current_year_age < priv_stop_age:
             # Phase A: Accumulation
             contrib = params['priv_monthly'] * 12 * deflator
-            priv_basis += contrib
             net_contrib = contrib * (1 - fee_contrib_rate)
-            priv_balance = (priv_balance + net_contrib) * (1 + ret)
-            priv_balance *= (1 - fee_balance_rate)
+            
+            for lot in priv_lots:
+                lot['value'] = lot['value'] * (1 + ret) * (1 - fee_balance_rate)
+                
+            if contrib > 0:
+                new_lot_value = net_contrib * (1 + ret) * (1 - fee_balance_rate)
+                priv_lots.append({'basis': contrib, 'value': new_lot_value})
+                
+            priv_balance = sum(lot['value'] for lot in priv_lots)
+            priv_basis = sum(lot['basis'] for lot in priv_lots)
             
         elif current_year_age < priv_payout_age:
             # Phase B: Stagnation / Growth
-            priv_balance *= (1 + ret)
-            priv_balance *= (1 - fee_balance_rate)
+            for lot in priv_lots:
+                lot['value'] = lot['value'] * (1 + ret) * (1 - fee_balance_rate)
+            priv_balance = sum(lot['value'] for lot in priv_lots)
+            priv_basis = sum(lot['basis'] for lot in priv_lots)
             
         elif current_year_age <= priv_payout_end_age:
             # Phase C: Payout
+            for lot in priv_lots:
+                lot['value'] = lot['value'] * (1 + ret) * (1 - fee_balance_rate)
+            priv_balance = sum(lot['value'] for lot in priv_lots)
+            priv_basis = sum(lot['basis'] for lot in priv_lots)
+
             net_ret = ret - fee_balance_rate
             periods_remaining = priv_payout_end_age - current_year_age + 1
             
@@ -136,14 +152,33 @@ def simulate_wealth(params):
                 
             priv_payout_gross = payout
             
-            withdrawal_fraction = payout / priv_balance if priv_balance > 0 else 0
-            basis_withdrawn = priv_basis * withdrawal_fraction
-            gain = payout - basis_withdrawn
+            remaining_to_withdraw = payout
+            basis_withdrawn = 0
             
-            priv_basis -= basis_withdrawn
-            priv_balance -= payout
-            priv_balance *= (1 + ret)
-            priv_balance *= (1 - fee_balance_rate)
+            new_priv_lots = []
+            for lot in priv_lots:
+                if remaining_to_withdraw <= 0:
+                    new_priv_lots.append(lot)
+                    continue
+                    
+                withdraw_from_lot = min(remaining_to_withdraw, lot['value'])
+                fraction = withdraw_from_lot / lot['value'] if lot['value'] > 0 else 0
+                basis_from_lot = lot['basis'] * fraction
+                
+                remaining_to_withdraw -= withdraw_from_lot
+                basis_withdrawn += basis_from_lot
+                
+                lot['value'] -= withdraw_from_lot
+                lot['basis'] -= basis_from_lot
+                
+                if lot['value'] > 0.001:
+                    new_priv_lots.append(lot)
+                    
+            priv_lots = new_priv_lots
+            priv_balance = sum(lot['value'] for lot in priv_lots)
+            priv_basis = sum(lot['basis'] for lot in priv_lots)
+            
+            gain = payout - basis_withdrawn
             
             # Halbeinkünfteverfahren Taxation (12/62 Rule)
             taxable_gain = gain * (1 - 0.15) * 0.50
@@ -152,6 +187,7 @@ def simulate_wealth(params):
             # Phase D: After Private Pension
             priv_balance = 0
             priv_basis = 0
+            priv_lots = []
             priv_payout_gross = 0
             taxable_gain = 0
             
@@ -231,35 +267,118 @@ def simulate_wealth(params):
         stock_tax_withdrawal = 0
         stock_withdrawal = 0
         
+        # Grow existing lots
+        for lot in stock_lots:
+            lot['value'] *= (1 + ret)
+            
         if current_year_age < early_ret_age:
             # Accumulation phase
             contrib = params['stock_monthly'] * 12 * deflator
-            stock_basis += contrib
-            stock_balance = (stock_balance + contrib) * (1 + ret)
+            if contrib > 0:
+                stock_lots.append({'basis': contrib, 'value': contrib})
             
-            vp_tax, sparerpauschbetrag = calc_vorabpauschale(stock_start, stock_balance, params['basiszinssatz']/100.0, sparerpauschbetrag)
+            stock_balance_before_vp = sum(lot['value'] for lot in stock_lots)
+            vp_tax, sparerpauschbetrag = calc_vorabpauschale(stock_start, stock_balance_before_vp, params['basiszinssatz']/100.0, sparerpauschbetrag)
             stock_tax_vp = vp_tax
-            stock_balance -= vp_tax
+            
+            if stock_balance_before_vp > 0:
+                vp_base_total = min(stock_start * (params['basiszinssatz']/100.0) * 0.7, max(0, stock_balance_before_vp - stock_start))
+                for lot in stock_lots:
+                    fraction = lot['value'] / stock_balance_before_vp
+                    lot['basis'] += vp_base_total * fraction
+                    lot['value'] -= vp_tax * fraction
+            stock_balance = sum(lot['value'] for lot in stock_lots)
         else:
             # Retirement / Partial Retirement phase
-            stock_balance *= (1 + ret)
-            
-            vp_tax, sparerpauschbetrag = calc_vorabpauschale(stock_start, stock_balance, params['basiszinssatz']/100.0, sparerpauschbetrag)
+            stock_balance_before_vp = sum(lot['value'] for lot in stock_lots)
+            vp_tax, sparerpauschbetrag = calc_vorabpauschale(stock_start, stock_balance_before_vp, params['basiszinssatz']/100.0, sparerpauschbetrag)
             stock_tax_vp = vp_tax
-            stock_balance -= vp_tax
+            
+            if stock_balance_before_vp > 0:
+                vp_base_total = min(stock_start * (params['basiszinssatz']/100.0) * 0.7, max(0, stock_balance_before_vp - stock_start))
+                for lot in stock_lots:
+                    fraction = lot['value'] / stock_balance_before_vp
+                    lot['basis'] += vp_base_total * fraction
+                    lot['value'] -= vp_tax * fraction
+            stock_balance = sum(lot['value'] for lot in stock_lots)
             
             if shortfall > 0:
-                effective_tax_rate = 0.50 * 0.26375
                 is_voluntary = is_privatier or params['gkv_status'] != 'KVdR'
                 
+                # Check if withdrawing everything is still not enough
+                temp_gross = stock_balance
+                temp_gain = 0
+                for lot in stock_lots:
+                    lot_gain = max(0, lot['value'] - lot['basis']) * 0.70
+                    temp_gain += lot_gain
+                used_freibetrag_temp = min(temp_gain, sparerpauschbetrag)
+                taxable_temp = temp_gain - used_freibetrag_temp
+                temp_tax = taxable_temp * 0.26375
+                temp_gkv = 0
                 if is_voluntary:
-                    effective_tax_rate += 0.50 * gkv_rate
-                    
-                gross_withdrawal = shortfall / (1 - effective_tax_rate)
-                stock_withdrawal = min(gross_withdrawal, stock_balance)
-                stock_balance -= stock_withdrawal
+                    new_assessed = current_assessed_income_for_gkv + temp_gain
+                    temp_gkv = max(0, min(new_assessed, bbg_gkv) - min(current_assessed_income_for_gkv, bbg_gkv)) * gkv_rate
+                max_net = temp_gross - temp_tax - temp_gkv
                 
-                gain_portion = stock_withdrawal * 0.50
+                best_gross = stock_balance
+                if max_net > shortfall:
+                    # Binary search
+                    low = shortfall
+                    high = min(stock_balance, shortfall * 2.0)
+                    for _ in range(30):
+                        mid = (low + high) / 2.0
+                        temp_gross = mid
+                        temp_gain = 0
+                        for lot in stock_lots:
+                            if temp_gross <= 0: break
+                            withdraw_from_lot = min(temp_gross, lot['value'])
+                            fraction = withdraw_from_lot / lot['value']
+                            basis_withdrawn = lot['basis'] * fraction
+                            temp_gain += max(0, withdraw_from_lot - basis_withdrawn) * 0.70
+                            temp_gross -= withdraw_from_lot
+                            
+                        used_freibetrag_temp = min(temp_gain, sparerpauschbetrag)
+                        taxable_temp = temp_gain - used_freibetrag_temp
+                        temp_tax = taxable_temp * 0.26375
+                        
+                        temp_gkv = 0
+                        if is_voluntary:
+                            new_assessed = current_assessed_income_for_gkv + temp_gain
+                            temp_gkv = max(0, min(new_assessed, bbg_gkv) - min(current_assessed_income_for_gkv, bbg_gkv)) * gkv_rate
+                            
+                        net_temp = mid - temp_tax - temp_gkv
+                        
+                        if net_temp >= shortfall:
+                            high = mid
+                        else:
+                            low = mid
+                    best_gross = high
+                
+                stock_withdrawal = best_gross
+                gain_portion = 0
+                remaining_to_withdraw = best_gross
+                
+                new_stock_lots = []
+                for lot in stock_lots:
+                    if remaining_to_withdraw <= 0:
+                        new_stock_lots.append(lot)
+                        continue
+                        
+                    withdraw_from_lot = min(remaining_to_withdraw, lot['value'])
+                    fraction = withdraw_from_lot / lot['value']
+                    basis_withdrawn = lot['basis'] * fraction
+                    gain_portion += max(0, withdraw_from_lot - basis_withdrawn) * 0.70
+                    
+                    remaining_to_withdraw -= withdraw_from_lot
+                    
+                    lot['value'] -= withdraw_from_lot
+                    lot['basis'] -= basis_withdrawn
+                    if lot['value'] > 0.001:
+                        new_stock_lots.append(lot)
+                        
+                stock_lots = new_stock_lots
+                stock_balance = sum(lot['value'] for lot in stock_lots)
+                
                 used_freibetrag = min(gain_portion, sparerpauschbetrag)
                 stock_tax_withdrawal = max(0, gain_portion - used_freibetrag) * 0.26375
                 sparerpauschbetrag -= used_freibetrag

@@ -23,7 +23,7 @@ def main():
         inflation = st.number_input("Inflationsrate (%)", value=2.0, step=0.1)
         return_pre = st.number_input("Rendite vor Rentenbeginn (%)", value=6.0, step=0.1)
         return_post = st.number_input("Rendite im Ruhestand (%)", value=4.0, step=0.1)
-        basiszinssatz = st.number_input("Basiszinssatz Vorabpauschale 2026 (%)", value=2.55, step=0.1)
+        basiszinssatz = st.number_input("Basiszinssatz Vorabpauschale 2026 (%)", value=3.20, step=0.1)
         
         st.header("3. Aktienmarkt (Depot)")
         stock_initial = st.number_input("Aktueller Depotbestand (€)", value=50000, step=1000)
@@ -41,8 +41,8 @@ def main():
         st.header("6. Krankenversicherung")
         gkv_status_display = st.selectbox("GKV-Status im Ruhestand", ["KVdR", "Freiwillig"])
         st.caption("KVdR: GKV nur auf gesetzliche Rente. Freiwillig: GKV auf das GESAMTE Einkommen (Depot, private Rente).")
-        kv_rate = st.number_input("GKV-Beitragssatz + Zusatzbeitrag (%)", value=16.3, step=0.1)
-        pv_rate = st.number_input("Beitragssatz Pflegeversicherung (PV) (%)", value=4.0, step=0.1)
+        kv_rate = st.number_input("GKV-Beitragssatz + Zusatzbeitrag (%)", value=17.5, step=0.1)
+        pv_rate = st.number_input("Beitragssatz Pflegeversicherung (PV) (%)", value=3.6, step=0.1)
 
 
     params = {
