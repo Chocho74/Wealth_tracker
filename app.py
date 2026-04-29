@@ -1,6 +1,16 @@
 import streamlit as st
 import plotly.express as px
+import json
 from calculations import simulate_wealth, calculate_flat_savings_equivalent
+
+def load_params():
+    if st.session_state.uploaded_file is not None:
+        try:
+            loaded = json.load(st.session_state.uploaded_file)
+            for k, v in loaded.items():
+                st.session_state[k] = v
+        except Exception as e:
+            st.error(f"Fehler beim Laden der Datei: {e}")
 
 def main():
     st.set_page_config(page_title="Deutscher Rentenplaner", layout="wide", page_icon="📈")
@@ -11,52 +21,74 @@ def main():
     """)
 
     with st.sidebar:
+        st.header("📂 Parameter Speichern / Laden")
+        st.file_uploader("Parameter laden (.json)", type=["json"], key="uploaded_file", on_change=load_params)
+        
         st.header("1. Persönliche Daten")
-        current_age = st.number_input("Aktuelles Alter", min_value=18, max_value=80, value=30)
-        early_retirement_age = st.number_input("Gewünschtes Renteneintrittsalter (Frührente)", min_value=50, max_value=67, value=67)
-        end_age = st.number_input("Endalter (Lebenserwartung)", min_value=70, max_value=120, value=95)
-        salary = st.number_input("Aktuelles Bruttogehalt (€/Jahr)", value=60000, step=1000)
+        current_age = st.number_input("Aktuelles Alter", min_value=18, max_value=80, value=30, key="current_age")
+        early_retirement_age = st.number_input("Gewünschtes Renteneintrittsalter (Frührente)", min_value=50, max_value=67, value=67, key="early_retirement_age")
+        end_age = st.number_input("Endalter (Lebenserwartung)", min_value=70, max_value=120, value=95, key="end_age")
+        salary = st.number_input("Aktuelles Bruttogehalt (€/Jahr)", value=60000, step=1000, key="salary")
         
         do_partial_retirement = False
         final_retirement_age = early_retirement_age
         partial_salary = 0.0
         
         if early_retirement_age < 67:
-            do_partial_retirement = st.checkbox("Nach dem Renteneintrittsalter in Altersteilzeit arbeiten?", value=False)
+            do_partial_retirement = st.checkbox("Nach dem Renteneintrittsalter in Altersteilzeit arbeiten?", value=False, key="do_partial_retirement")
             if do_partial_retirement:
                 max_duration = 67 - early_retirement_age
-                partial_duration = st.number_input("Dauer der Altersteilzeit (Jahre)", min_value=1, max_value=max_duration, value=min(2, max_duration), step=1)
+                partial_duration = st.number_input("Dauer der Altersteilzeit (Jahre)", min_value=1, max_value=max_duration, value=min(2, max_duration), step=1, key="partial_duration")
                 final_retirement_age = early_retirement_age + partial_duration
-                partial_salary = st.number_input("Geschätztes Bruttogehalt in Altersteilzeit (€/Jahr)", value=30000.0, step=1000.0)
+                partial_salary = st.number_input("Geschätztes Bruttogehalt in Altersteilzeit (€/Jahr)", value=30000.0, step=1000.0, key="partial_salary")
                 
-        target_net = st.number_input("Ziel-Nettoeinkommen im Ruhestand (€/Monat)", value=3000, step=100)
+        target_net = st.number_input("Ziel-Nettoeinkommen im Ruhestand (€/Monat)", value=3000, step=100, key="target_net")
         
         st.header("2. Wirtschaftliche Annahmen")
-        inflation = st.number_input("Inflationsrate (%)", value=2.0, step=0.1)
-        return_pre = st.number_input("Rendite vor Rentenbeginn (%)", value=6.0, step=0.1)
-        return_post = st.number_input("Rendite im Ruhestand (%)", value=4.0, step=0.1)
-        basiszinssatz = st.number_input("Basiszinssatz Vorabpauschale 2026 (%)", value=3.20, step=0.1)
+        inflation = st.number_input("Inflationsrate (%)", value=2.0, step=0.1, key="inflation")
+        return_pre = st.number_input("Rendite vor Rentenbeginn (%)", value=6.0, step=0.1, key="return_pre")
+        return_post = st.number_input("Rendite im Ruhestand (%)", value=4.0, step=0.1, key="return_post")
+        basiszinssatz = st.number_input("Basiszinssatz Vorabpauschale 2026 (%)", value=3.20, step=0.1, key="basiszinssatz")
         
         st.header("3. Aktienmarkt (Depot)")
-        stock_initial = st.number_input("Aktueller Depotbestand (€)", value=50000, step=1000)
-        stock_monthly = st.number_input("Monatliche Sparrate (€)", value=500, step=50)
-        etf_switches = st.number_input("Anzahl ETF-Wechsel in der Ansparphase", min_value=0, max_value=10, value=0, step=1)
+        stock_initial = st.number_input("Aktueller Depotbestand (€)", value=50000, step=1000, key="stock_initial")
+        stock_monthly = st.number_input("Monatliche Sparrate (€)", value=500, step=50, key="stock_monthly")
+        etf_switches = st.number_input("Anzahl ETF-Wechsel in der Ansparphase", min_value=0, max_value=10, value=0, step=1, key="etf_switches")
         st.caption("LIFO-Strategie: Wenn Sie während der Ansparphase ETFs wechseln, wird im Ruhestand der jeweils jüngste ETF zuerst verkauft. Innerhalb des ETFs gilt das FIFO-Prinzip.")
         
         st.header("4. Private Rente (Schicht 3)")
-        priv_initial = st.number_input("Aktuelles Rentenguthaben (€)", value=10000, step=1000)
-        priv_monthly = st.number_input("Monatlicher Beitrag (€)", value=200, step=50)
-        priv_fee_contrib = st.number_input("Gebühr auf Einzahlungen (%)", value=0.50, step=0.10)
-        priv_fee_balance = st.number_input("Jährliche Gebühr auf Guthaben (%)", value=0.22, step=0.01)
+        priv_initial = st.number_input("Aktuelles Rentenguthaben (€)", value=10000, step=1000, key="priv_initial")
+        priv_monthly = st.number_input("Monatlicher Beitrag (€)", value=200, step=50, key="priv_monthly")
+        priv_fee_contrib = st.number_input("Gebühr auf Einzahlungen (%)", value=0.50, step=0.10, key="priv_fee_contrib")
+        priv_fee_balance = st.number_input("Jährliche Gebühr auf Guthaben (%)", value=0.22, step=0.01, key="priv_fee_balance")
         
         st.header("5. Gesetzliche Rente")
-        current_ep = st.number_input("Aktuelle Rentenpunkte (EP)", value=10.0, step=1.0)
+        current_ep = st.number_input("Aktuelle Rentenpunkte (EP)", value=10.0, step=1.0, key="current_ep")
         
         st.header("6. Krankenversicherung")
-        gkv_status_display = st.selectbox("GKV-Status im Ruhestand", ["KVdR", "Freiwillig"])
+        gkv_status_display = st.selectbox("GKV-Status im Ruhestand", ["KVdR", "Freiwillig"], key="gkv_status_display")
         st.caption("KVdR: GKV nur auf gesetzliche Rente. Freiwillig: GKV auf das GESAMTE Einkommen (Depot, private Rente).")
-        kv_rate = st.number_input("GKV-Beitragssatz + Zusatzbeitrag (%)", value=17.5, step=0.1)
-        pv_rate = st.number_input("Beitragssatz Pflegeversicherung (PV) (%)", value=3.6, step=0.1)
+        kv_rate = st.number_input("GKV-Beitragssatz + Zusatzbeitrag (%)", value=17.5, step=0.1, key="kv_rate")
+        pv_rate = st.number_input("Beitragssatz Pflegeversicherung (PV) (%)", value=3.6, step=0.1, key="pv_rate")
+
+        # Create dict to save
+        save_dict = {
+            "current_age": current_age, "early_retirement_age": early_retirement_age, "end_age": end_age,
+            "salary": salary, "do_partial_retirement": do_partial_retirement, "partial_duration": partial_duration if 'partial_duration' in locals() else 2,
+            "partial_salary": partial_salary, "target_net": target_net,
+            "inflation": inflation, "return_pre": return_pre, "return_post": return_post, "basiszinssatz": basiszinssatz,
+            "stock_initial": stock_initial, "stock_monthly": stock_monthly, "etf_switches": etf_switches,
+            "priv_initial": priv_initial, "priv_monthly": priv_monthly, "priv_fee_contrib": priv_fee_contrib, "priv_fee_balance": priv_fee_balance,
+            "current_ep": current_ep, "gkv_status_display": gkv_status_display, "kv_rate": kv_rate, "pv_rate": pv_rate
+        }
+        
+        st.download_button(
+            label="💾 Aktuelle Parameter speichern",
+            data=json.dumps(save_dict, indent=4),
+            file_name="rentenplaner_params.json",
+            mime="application/json",
+            use_container_width=True
+        )
 
 
     params = {
@@ -163,6 +195,7 @@ def main():
 
         **2. Gesetzliche Rente**  
         Die gesetzliche Rente wird anhand Ihrer gesammelten **Rentenpunkte (Entgeltpunkte, EP)** berechnet. Bis zu Ihrem Renteneintrittsalter sammeln Sie durch Ihr Gehalt weitere Punkte (gedeckelt durch die Beitragsbemessungsgrenze). Jeder Punkt wird mit dem aktuellen Rentenwert multipliziert, um Ihre Bruttorente zu ermitteln.
+        Zusätzlich gilt für den Renteneintritt im Jahr 2026 das **Kohortenprinzip**: Nur 84% der ersten vollen Rente sind steuerpflichtig. Die restlichen 16% werden als fester Steuerfreibetrag (Rentenfreibetrag) in Euro für die gesamte Laufzeit festgeschrieben. Zukünftige Rentenerhöhungen (z.B. Inflationsausgleich) sind zu 100% steuerpflichtig.
 
         **3. Private Rentenversicherung & Halbeinkünfteverfahren (12/62-Regel)**  
         Die private Rentenversicherung (Schicht 3) hat in diesem Tool folgende feste Phasen:
@@ -191,6 +224,11 @@ def main():
         Das Tool verwendet zwei unterschiedliche Renditen, um das typische Risiko-Rendite-Profil im Lebenszyklus abzubilden:
         - **Rendite vor Rentenbeginn:** Diese (meist höhere) Rendite wird für die Aufbauphase angenommen. Sie gilt einheitlich für Ihr **Aktiendepot** und Ihr **privates Rentenguthaben**, solange Sie arbeiten – genauer gesagt, bis zu dem von Ihnen festgelegten *Gewünschten Renteneintrittsalter (Frührente)*.
         - **Rendite im Ruhestand:** Exakt ab dem Jahr, in dem Sie in Rente gehen (Frührente oder gesetzliche Rente), wechselt das Tool für beide Bausteine (Depot und private Rente) auf diese (meist niedrigere) Rendite. Dies simuliert den in der Praxis typischen "Shift", bei dem das Portfolio zur Absicherung der Entnahmen in risikoärmere Anlagen (wie z. B. Anleihen) umgeschichtet wird, die weniger Rendite bringen, aber sicherer sind.
+
+        **7. Entnahmestrategie im Depot (FIFO vs. LIFO)**  
+        Um die Steuern auf Depotentnahmen im Ruhestand zu berechnen, wendet das Tool in Deutschland geltende Prinzipien an:
+        - **FIFO (First In, First Out):** Bei Wertpapieren mit derselben Kennnummer (ISIN/WKN) müssen laut Gesetz immer die Anteile zuerst verkauft werden, die zuerst gekauft wurden. Da diese Anteile in der Regel am längsten im Depot waren, haben sie die höchsten Gewinne und verursachen beim Verkauf die höchste Steuerlast.
+        - **LIFO (Last In, First Out) durch ETF-Wechsel:** Um diesem Nachteil entgegenzuwirken, können Sie im Tool eine Anzahl an "ETF-Wechseln" in der Ansparphase simulieren. Das bedeutet, Sie besparen nicht 30 Jahre lang denselben ETF, sondern wechseln z.B. alle 10 Jahre den besparten ETF (selber Index, andere WKN). Im Ruhestand können Sie dann die ETF-Anteile aus dem "jüngsten" ETF zuerst verkaufen (LIFO-Strategie über mehrere ETFs). Der Gewinn dieser jüngeren Anteile ist deutlich geringer, wodurch Sie wertvolle Steuern stunden und den Steuerstundungseffekt maximieren können. Innerhalb jedes einzelnen ETFs gilt natürlich weiterhin gesetzlich FIFO.
         """)
 
 if __name__ == "__main__":

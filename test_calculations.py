@@ -1,7 +1,7 @@
 import unittest
 import os
 import pandas as pd
-from calculations import calc_vorabpauschale, calc_income_tax_2024, simulate_wealth
+from calculations import calc_vorabpauschale, calc_income_tax_2026, simulate_wealth
 
 class TestCalculations(unittest.TestCase):
 
@@ -14,12 +14,12 @@ class TestCalculations(unittest.TestCase):
         self.assertAlmostEqual(tax, 18.4625)
         self.assertAlmostEqual(remaining_freibetrag, 0.0)
 
-    def test_calc_income_tax_2024(self):
-        self.assertAlmostEqual(calc_income_tax_2024(10000), 0.0)
-        self.assertAlmostEqual(calc_income_tax_2024(15000), 548.991679, places=5)
-        self.assertAlmostEqual(calc_income_tax_2024(50000), 10872.6727, places=3)
-        self.assertAlmostEqual(calc_income_tax_2024(100000), 31363.69, places=2)
-        self.assertAlmostEqual(calc_income_tax_2024(300000), 116028.94, places=2)
+    def test_calc_income_tax_2026(self):
+        self.assertAlmostEqual(calc_income_tax_2026(10000), 0.0)
+        self.assertAlmostEqual(calc_income_tax_2026(15000), 548.991679, places=5)
+        self.assertAlmostEqual(calc_income_tax_2026(50000), 10872.6727, places=3)
+        self.assertAlmostEqual(calc_income_tax_2026(100000), 31363.69, places=2)
+        self.assertAlmostEqual(calc_income_tax_2026(300000), 116028.94, places=2)
 
     def test_simulate_wealth_regression(self):
         """

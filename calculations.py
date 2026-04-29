@@ -30,9 +30,10 @@ def calc_vorabpauschale(value_start: float, value_end: float, basiszinssatz: flo
     tax = taxable_amount * 0.26375
     return tax, sparerpauschbetrag_remaining
 
-def calc_income_tax_2024(zvE: float) -> float:
+def calc_income_tax_2026(zvE: float) -> float:
     """
-    Calculates the German income tax (ESt) based on the 2024 formula (§ 32a EStG).
+    Calculates the German income tax (ESt) based on the estimated 2026 formula (§ 32a EStG).
+    (Using proposed Grundfreibetrag of €12,336).
     
     Args:
         zvE: The taxable income (zu versteuerndes Einkommen).
@@ -41,10 +42,10 @@ def calc_income_tax_2024(zvE: float) -> float:
         The calculated income tax.
     """
     x = int(zvE)
-    if x <= 11784:
+    if x <= 12336:
         return 0.0
     elif x <= 17005:
-        y = (x - 11784) / 10000.0
+        y = (x - 12336) / 10000.0
         return (954.80 * y + 1400.0) * y
     elif x <= 66760:
         z = (x - 17005) / 10000.0
@@ -268,7 +269,9 @@ class WealthSimulation:
         bbg_gkv = 69750 * self.deflator
         min_gkv_income = 14140 * self.deflator 
         
-        is_privatier = (self.current_year_age >= self.early_ret_age) and (self.current_year_age < self.state_ret_age)
+        is_employed = (self.current_year_age < self.early_ret_age) or (self.do_partial_ret and self.current_year_age < self.final_ret_age)
+        is_privatier = (not is_employed) and (self.current_year_age < self.state_ret_age)
+        
         current_assessed_income_for_gkv = 0.0
         base_income_for_gkv = 0.0
         
@@ -278,16 +281,14 @@ class WealthSimulation:
             else:
                 base_income_for_gkv = state_pension_gross + priv_payout_gross
                 current_assessed_income_for_gkv = max(base_income_for_gkv, min_gkv_income)
-                gkv_cost = min(current_assessed_income_for_gkv, bbg_gkv) * gkv_rate 
+                capped_income = min(current_assessed_income_for_gkv, bbg_gkv)
+                assessed_state_pension = min(state_pension_gross, capped_income)
+                assessed_private = capped_income - assessed_state_pension
+                gkv_cost = assessed_state_pension * (kvdr_kv_rate + kvdr_pv_rate) + assessed_private * gkv_rate
         elif is_privatier:
             base_income_for_gkv = priv_payout_gross
             current_assessed_income_for_gkv = max(base_income_for_gkv, min_gkv_income)
             gkv_cost = min(current_assessed_income_for_gkv, bbg_gkv) * gkv_rate
-        elif self.current_year_age >= self.priv_payout_age:
-            if self.params['gkv_status'] != 'KVdR':
-                base_income_for_gkv = user_salary_gross + priv_payout_gross
-                current_assessed_income_for_gkv = max(base_income_for_gkv, min_gkv_income)
-                gkv_cost = min(current_assessed_income_for_gkv, bbg_gkv) * gkv_rate
                 
         return gkv_cost, base_income_for_gkv, min_gkv_income, is_privatier
 
@@ -297,7 +298,7 @@ class WealthSimulation:
         
         nominal_taxable_income_total = max(0, user_salary_gross + state_pension_gross + taxable_gain - gkv_cost - salary_gkv_deduction)
         real_taxable_income_total = nominal_taxable_income_total / self.deflator
-        real_tax_total = calc_income_tax_2024(real_taxable_income_total)
+        real_tax_total = calc_income_tax_2026(real_taxable_income_total)
         total_nominal_income_tax = real_tax_total * self.deflator
 
         total_taxable_before_deductions = user_salary_gross + state_pension_gross + taxable_gain
@@ -562,3 +563,4 @@ def calculate_flat_savings_equivalent(params: Dict[str, Any]) -> Tuple[float, fl
     priv_flat = (priv_fv_adj / priv_fv_flat) if priv_fv_flat > 0 else priv_monthly
     
     return stock_flat, priv_flat
+
