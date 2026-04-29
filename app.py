@@ -16,7 +16,19 @@ def main():
         early_retirement_age = st.number_input("Gewünschtes Renteneintrittsalter (Frührente)", min_value=50, max_value=67, value=67)
         end_age = st.number_input("Endalter (Lebenserwartung)", min_value=70, max_value=120, value=95)
         salary = st.number_input("Aktuelles Bruttogehalt (€/Jahr)", value=60000, step=1000)
-        partial_salary = st.number_input("Gehalt in Altersteilzeit (62-67) (€/Jahr)", value=30000, step=1000)
+        
+        do_partial_retirement = False
+        final_retirement_age = early_retirement_age
+        partial_salary = 0.0
+        
+        if early_retirement_age < 67:
+            do_partial_retirement = st.checkbox("Nach dem Renteneintrittsalter in Altersteilzeit arbeiten?", value=False)
+            if do_partial_retirement:
+                max_duration = 67 - early_retirement_age
+                partial_duration = st.number_input("Dauer der Altersteilzeit (Jahre)", min_value=1, max_value=max_duration, value=min(2, max_duration), step=1)
+                final_retirement_age = early_retirement_age + partial_duration
+                partial_salary = st.number_input("Geschätztes Bruttogehalt in Altersteilzeit (€/Jahr)", value=30000.0, step=1000.0)
+                
         target_net = st.number_input("Ziel-Nettoeinkommen im Ruhestand (€/Monat)", value=3000, step=100)
         
         st.header("2. Wirtschaftliche Annahmen")
@@ -48,7 +60,9 @@ def main():
 
 
     params = {
-        'current_age': current_age, 'end_age': end_age, 'early_retirement_age': early_retirement_age, 'salary': salary, 'partial_salary': partial_salary, 'target_net_income': target_net,
+        'current_age': current_age, 'end_age': end_age, 'early_retirement_age': early_retirement_age, 
+        'salary': salary, 'partial_salary': partial_salary, 'target_net_income': target_net,
+        'do_partial_ret': do_partial_retirement, 'final_ret_age': final_retirement_age,
         'inflation': inflation, 'return_pre': return_pre, 'return_post': return_post, 'basiszinssatz': basiszinssatz,
         'stock_initial': stock_initial, 'stock_monthly': stock_monthly, 'etf_switches': etf_switches,
         'priv_initial': priv_initial, 'priv_monthly': priv_monthly,
@@ -97,9 +111,11 @@ def main():
                       color_discrete_sequence=['#1f77b4', '#2ca02c'])
         
         # Add Retirement lines
-        fig.add_vline(x=early_retirement_age, line_dash="dash", line_color="purple", annotation_text=f"Alter {early_retirement_age} (Frührente)", annotation_position="top left")
+        fig.add_vline(x=early_retirement_age, line_dash="dash", line_color="purple", annotation_text=f"Alter {early_retirement_age} (Ende Vollzeit)", annotation_position="top left")
+        if do_partial_retirement:
+             fig.add_vline(x=final_retirement_age, line_dash="dash", line_color="magenta", annotation_text=f"Alter {final_retirement_age} (Ende Teilzeit)", annotation_position="top right")
         fig.add_vline(x=62, line_dash="dash", line_color="red", annotation_text="Alter 62 (Priv. Auszahlung)", annotation_position="bottom left")
-        fig.add_vline(x=67, line_dash="dash", line_color="orange", annotation_text="Alter 67 (Gesetzl. Rente)", annotation_position="top right")
+        fig.add_vline(x=67, line_dash="dash", line_color="orange", annotation_text="Alter 67 (Gesetzl. Rente)", annotation_position="bottom right")
         
         st.plotly_chart(fig, use_container_width=True)
         

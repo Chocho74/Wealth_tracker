@@ -32,7 +32,12 @@ The following constants are immutable for this project. All calculations in `cal
 - **GKV Payout Logic:** - **KVdR Mode:** Retiree pays GKV/PV only on the State Pension (State pays 50% of GKV). Stocks/Private Insurance are GKV-free.
     - **Voluntary Mode:** Retiree pays full GKV/PV (approx. 21%) on ALL income (Pension + Insurance + Stock Gains).
 
-## 3. Technical Requirements
+## 3. Details to Implement
+- **First in First out (FIFO)** The stock which was purchased first needs to be sold first. Gains on this sell must be taxed accordingly
+- **ETF switches** FIFO applies only to unique ETFs. When the ETF which is being contributed to, is switched taxes can be saved by selling youngest ETF first.
+- **Partial retirtement** it is possible to retire earlier than with 67 years old and work partial for some years. 
+
+## 4. Technical Requirements
 - **Language:** Python 3.12+
 - **Framework:** Streamlit for UI, Plotly for Interactive Charts.
 - **Architecture:** Keep logic in `calculations.py` and UI in `app.py`.
