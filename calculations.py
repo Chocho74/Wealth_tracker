@@ -43,7 +43,7 @@ def simulate_wealth(params):
     # Initial Balances
     stock_balance = params['stock_initial']
     stock_basis = params['stock_initial']
-    stock_lots = [{'basis': stock_basis, 'value': stock_balance}] if stock_balance > 0 else []
+    stock_lots = [{'basis': stock_basis, 'value': stock_balance, 'etf_id': 0}] if stock_balance > 0 else []
     
     priv_balance = params['priv_initial']
     priv_basis = params['priv_initial']
@@ -198,21 +198,27 @@ def simulate_wealth(params):
         kvdr_pv_rate = params['pv_rate'] / 100.0         # Full PV
         
         bbg_gkv = 69750 * deflator
+        min_gkv_income = 14140 * deflator # Mindestbemessungsgrundlage for freiwillig Versicherte (~1178€/Monat in 2024)
+        
         is_privatier = (current_year_age >= early_ret_age) and (current_year_age < state_ret_age)
         current_assessed_income_for_gkv = 0
+        base_income_for_gkv = 0
         
         if current_year_age >= state_ret_age:
             if params['gkv_status'] == 'KVdR':
                 gkv_cost = state_pension_gross * (kvdr_kv_rate + kvdr_pv_rate)
             else:
-                current_assessed_income_for_gkv = state_pension_gross + priv_payout_gross
+                base_income_for_gkv = state_pension_gross + priv_payout_gross
+                current_assessed_income_for_gkv = max(base_income_for_gkv, min_gkv_income)
                 gkv_cost = min(current_assessed_income_for_gkv, bbg_gkv) * gkv_rate 
         elif is_privatier:
-            current_assessed_income_for_gkv = priv_payout_gross
+            base_income_for_gkv = priv_payout_gross
+            current_assessed_income_for_gkv = max(base_income_for_gkv, min_gkv_income)
             gkv_cost = min(current_assessed_income_for_gkv, bbg_gkv) * gkv_rate
         elif current_year_age >= priv_payout_age:
             if params['gkv_status'] != 'KVdR':
-                current_assessed_income_for_gkv = user_salary_gross + priv_payout_gross
+                base_income_for_gkv = user_salary_gross + priv_payout_gross
+                current_assessed_income_for_gkv = max(base_income_for_gkv, min_gkv_income)
                 gkv_cost = min(current_assessed_income_for_gkv, bbg_gkv) * gkv_rate
 
         # Estimate GKV on salary for tax deduction purposes
@@ -239,25 +245,7 @@ def simulate_wealth(params):
         net_income_so_far = 0
         shortfall = 0
         if target_phase_started:
-            net_salary = max(0, user_salary_gross - salary_tax - salary_gkv_deduction)
-            
-            net_state_pension = 0
-            if state_pension_gross > 0:
-                if params['gkv_status'] == 'KVdR':
-                    net_state_pension = state_pension_gross - state_tax - (state_pension_gross * (kvdr_kv_rate + kvdr_pv_rate))
-                else:
-                    gkv_on_state = min(state_pension_gross, bbg_gkv) * gkv_rate
-                    net_state_pension = state_pension_gross - state_tax - gkv_on_state
-                    
-            net_priv_pension = 0
-            if priv_payout_gross > 0:
-                if params['gkv_status'] == 'KVdR' and not is_privatier:
-                    net_priv_pension = priv_payout_gross - priv_tax
-                else:
-                    gkv_on_priv = min(priv_payout_gross, max(0, bbg_gkv - state_pension_gross - user_salary_gross)) * gkv_rate
-                    net_priv_pension = priv_payout_gross - priv_tax - gkv_on_priv
-            
-            net_income_so_far = net_salary + net_state_pension + net_priv_pension
+            net_income_so_far = max(0, user_salary_gross + state_pension_gross + priv_payout_gross - salary_tax - state_tax - priv_tax - salary_gkv_deduction - gkv_cost)
             target_net_nominal = (params['target_net_income'] * 12) * deflator
             shortfall = max(0, target_net_nominal - net_income_so_far)
             
@@ -274,8 +262,19 @@ def simulate_wealth(params):
         if current_year_age < early_ret_age:
             # Accumulation phase
             contrib = params['stock_monthly'] * 12 * deflator
+            
+            etf_switches = params.get('etf_switches', 0)
+            num_etfs = etf_switches + 1
+            accumulation_years = early_ret_age - age
+            if accumulation_years > 0:
+                year_index = current_year_age - age - 1
+                etf_id = int(year_index / (accumulation_years / num_etfs))
+                etf_id = min(etf_id, etf_switches)
+            else:
+                etf_id = 0
+
             if contrib > 0:
-                stock_lots.append({'basis': contrib, 'value': contrib})
+                stock_lots.append({'basis': contrib, 'value': contrib, 'etf_id': etf_id})
             
             stock_balance_before_vp = sum(lot['value'] for lot in stock_lots)
             vp_tax, sparerpauschbetrag = calc_vorabpauschale(stock_start, stock_balance_before_vp, params['basiszinssatz']/100.0, sparerpauschbetrag, contrib=contrib)
@@ -303,12 +302,17 @@ def simulate_wealth(params):
             stock_balance = sum(lot['value'] for lot in stock_lots)
             
             if shortfall > 0:
-                is_voluntary = is_privatier or params['gkv_status'] != 'KVdR'
+                is_voluntary = is_privatier or (current_year_age >= state_ret_age and params['gkv_status'] != 'KVdR')
+                
+                # Build ordered_lots based on ETF strategy (youngest ETF first)
+                ordered_lots = []
+                for current_etf in range(params.get('etf_switches', 0), -1, -1):
+                    ordered_lots.extend([lot for lot in stock_lots if lot.get('etf_id', 0) == current_etf])
                 
                 # Check if withdrawing everything is still not enough
                 temp_gross = stock_balance
                 temp_gain = 0
-                for lot in stock_lots:
+                for lot in ordered_lots:
                     lot_gain = max(0, lot['value'] - lot['basis']) * 0.70
                     temp_gain += lot_gain
                 used_freibetrag_temp = min(temp_gain, sparerpauschbetrag)
@@ -316,8 +320,9 @@ def simulate_wealth(params):
                 temp_tax = taxable_temp * 0.26375
                 temp_gkv = 0
                 if is_voluntary:
-                    new_assessed = current_assessed_income_for_gkv + temp_gain
-                    temp_gkv = max(0, min(new_assessed, bbg_gkv) - min(current_assessed_income_for_gkv, bbg_gkv)) * gkv_rate
+                    total_income_temp = base_income_for_gkv + temp_gain
+                    new_assessed = max(total_income_temp, min_gkv_income)
+                    temp_gkv = max(0, min(new_assessed, bbg_gkv) * gkv_rate - gkv_cost)
                 max_net = temp_gross - temp_tax - temp_gkv
                 
                 best_gross = stock_balance
@@ -329,7 +334,7 @@ def simulate_wealth(params):
                         mid = (low + high) / 2.0
                         temp_gross = mid
                         temp_gain = 0
-                        for lot in stock_lots:
+                        for lot in ordered_lots:
                             if temp_gross <= 0: break
                             withdraw_from_lot = min(temp_gross, lot['value'])
                             fraction = withdraw_from_lot / lot['value']
@@ -343,8 +348,9 @@ def simulate_wealth(params):
                         
                         temp_gkv = 0
                         if is_voluntary:
-                            new_assessed = current_assessed_income_for_gkv + temp_gain
-                            temp_gkv = max(0, min(new_assessed, bbg_gkv) - min(current_assessed_income_for_gkv, bbg_gkv)) * gkv_rate
+                            total_income_temp = base_income_for_gkv + temp_gain
+                            new_assessed = max(total_income_temp, min_gkv_income)
+                            temp_gkv = max(0, min(new_assessed, bbg_gkv) * gkv_rate - gkv_cost)
                             
                         net_temp = mid - temp_tax - temp_gkv
                         
@@ -358,11 +364,9 @@ def simulate_wealth(params):
                 gain_portion = 0
                 remaining_to_withdraw = best_gross
                 
-                new_stock_lots = []
-                for lot in stock_lots:
+                for lot in ordered_lots:
                     if remaining_to_withdraw <= 0:
-                        new_stock_lots.append(lot)
-                        continue
+                        break
                         
                     withdraw_from_lot = min(remaining_to_withdraw, lot['value'])
                     fraction = withdraw_from_lot / lot['value']
@@ -373,10 +377,8 @@ def simulate_wealth(params):
                     
                     lot['value'] -= withdraw_from_lot
                     lot['basis'] -= basis_withdrawn
-                    if lot['value'] > 0.001:
-                        new_stock_lots.append(lot)
-                        
-                stock_lots = new_stock_lots
+                    
+                stock_lots = [lot for lot in stock_lots if lot['value'] > 0.001]
                 stock_balance = sum(lot['value'] for lot in stock_lots)
                 
                 used_freibetrag = min(gain_portion, sparerpauschbetrag)
@@ -384,8 +386,9 @@ def simulate_wealth(params):
                 sparerpauschbetrag -= used_freibetrag
                 
                 if is_voluntary:
-                    new_assessed = current_assessed_income_for_gkv + gain_portion
-                    additional_gkv = max(0, min(new_assessed, bbg_gkv) - min(current_assessed_income_for_gkv, bbg_gkv)) * gkv_rate
+                    total_income = base_income_for_gkv + gain_portion
+                    new_assessed = max(total_income, min_gkv_income)
+                    additional_gkv = max(0, min(new_assessed, bbg_gkv) * gkv_rate - gkv_cost)
                     gkv_cost += additional_gkv
             
         total_taxes = salary_tax + state_tax + priv_tax + stock_tax_withdrawal + stock_tax_vp + gkv_cost

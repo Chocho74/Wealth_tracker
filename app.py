@@ -28,6 +28,8 @@ def main():
         st.header("3. Aktienmarkt (Depot)")
         stock_initial = st.number_input("Aktueller Depotbestand (€)", value=50000, step=1000)
         stock_monthly = st.number_input("Monatliche Sparrate (€)", value=500, step=50)
+        etf_switches = st.number_input("Anzahl ETF-Wechsel in der Ansparphase", min_value=0, max_value=10, value=0, step=1)
+        st.caption("LIFO-Strategie: Wenn Sie während der Ansparphase ETFs wechseln, wird im Ruhestand der jeweils jüngste ETF zuerst verkauft. Innerhalb des ETFs gilt das FIFO-Prinzip.")
         
         st.header("4. Private Rente (Schicht 3)")
         priv_initial = st.number_input("Aktuelles Rentenguthaben (€)", value=10000, step=1000)
@@ -48,7 +50,7 @@ def main():
     params = {
         'current_age': current_age, 'end_age': end_age, 'early_retirement_age': early_retirement_age, 'salary': salary, 'partial_salary': partial_salary, 'target_net_income': target_net,
         'inflation': inflation, 'return_pre': return_pre, 'return_post': return_post, 'basiszinssatz': basiszinssatz,
-        'stock_initial': stock_initial, 'stock_monthly': stock_monthly,
+        'stock_initial': stock_initial, 'stock_monthly': stock_monthly, 'etf_switches': etf_switches,
         'priv_initial': priv_initial, 'priv_monthly': priv_monthly,
         'priv_fee_contrib': priv_fee_contrib, 'priv_fee_balance': priv_fee_balance,
         'current_ep': current_ep,
