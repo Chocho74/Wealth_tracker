@@ -279,12 +279,12 @@ class WealthSimulation:
             if self.params['gkv_status'] == 'KVdR':
                 gkv_cost = state_pension_gross * (kvdr_kv_rate + kvdr_pv_rate)
             else:
-                base_income_for_gkv = state_pension_gross + priv_payout_gross
+                # In voluntary mode, all income (state pension, private pension, stock gains)
+                # is subject to the full GKV rate up to the BBG.
+                # Stock gains from withdrawals are added later in _calc_stock_market.
+                base_income_for_gkv = state_pension_gross + priv_payout_gross 
                 current_assessed_income_for_gkv = max(base_income_for_gkv, min_gkv_income)
-                capped_income = min(current_assessed_income_for_gkv, bbg_gkv)
-                assessed_state_pension = min(state_pension_gross, capped_income)
-                assessed_private = capped_income - assessed_state_pension
-                gkv_cost = assessed_state_pension * (kvdr_kv_rate + kvdr_pv_rate) + assessed_private * gkv_rate
+                gkv_cost = min(current_assessed_income_for_gkv, bbg_gkv) * gkv_rate
         elif is_privatier:
             base_income_for_gkv = priv_payout_gross
             current_assessed_income_for_gkv = max(base_income_for_gkv, min_gkv_income)
@@ -563,4 +563,3 @@ def calculate_flat_savings_equivalent(params: Dict[str, Any]) -> Tuple[float, fl
     priv_flat = (priv_fv_adj / priv_fv_flat) if priv_fv_flat > 0 else priv_monthly
     
     return stock_flat, priv_flat
-
