@@ -20,6 +20,56 @@ def main():
     Es berücksichtigt die **Vorabpauschale**, das **Halbeinkünfteverfahren (12/62)** und den wichtigen Unterschied zwischen **KVdR** und **freiwilliger GKV**.
     """)
 
+    if 'show_info' not in st.session_state:
+        st.session_state.show_info = False
+
+    def toggle_info():
+        st.session_state.show_info = not st.session_state.show_info
+
+    st.button("ℹ️ INFO: Berechnungs- und Steuerdetails anzeigen", on_click=toggle_info)
+
+    if st.session_state.show_info:
+        st.info("""
+### 💡 Allgemeine Berechnungsgrundlage (Inflation)
+Alle internen Berechnungen des Tools finden in **nominalen Werten** statt (also unter Einbeziehung der Inflation über die Jahre). Um Ihnen jedoch ein intuitives Verständnis zu geben, werden alle ausgegebenen Zahlen (Vermögen, Steuern, Entnahmen) in die **heutige Kaufkraft (real)** zurückgerechnet.
+
+### 1. Gesetzliche Rente (GRV)
+Die gesetzliche Rente wird durch das Sammeln von **Rentenpunkten (Entgeltpunkten, EP)** simuliert.
+* **Ansparphase:** Während Sie arbeiten, wird Ihr Bruttogehalt durch das Durchschnittsentgelt (ca. 51.944 € für 2026) geteilt, um Ihre jährlichen Rentenpunkte zu ermitteln. Das maximal anrechenbare Gehalt ist durch die Beitragsbemessungsgrenze (101.400 €) gedeckelt. Altersteilzeit wird ebenfalls unterstützt und bringt proportionale Punkte.
+* **Auszahlungsphase (ab 67):** Jeder gesammelte Rentenpunkt ist monatlich 42,52 € wert (Rentenwert 2026).
+
+### 2. Private Rentenversicherung
+Die private Rente ist in drei Phasen unterteilt und nutzt steuerlich das attraktive **Halbeinkünfteverfahren (12/62-Regel)**:
+* **Phase 1 (Bis Alter 50):** Sie zahlen monatlich ein. Nach Abzug einer Abschlussgebühr (z.B. 0,50%) wächst Ihr Geld am Kapitalmarkt, abzüglich einer laufenden Verwaltungsgebühr (z.B. 0,22%).
+* **Phase 2 (Alter 50 bis 62):** Die Einzahlungen stoppen, aber das Kapital wächst weiter.
+* **Phase 3 (Alter 62 bis 85):** Das Kapital wird als lebenslange Rente (bzw. bis Alter 85) ausgezahlt.
+* **Besteuerung (12/62-Regel):** Da der Vertrag über 12 Jahre lief und erst ab Alter 62 ausgezahlt wird, ist nur der **Gewinn** steuerpflichtig. Der Gewinn ist definiert als die **Bruttoauszahlung minus dem proportionalen Anteil der ursprünglichen Einzahlungen**. Von diesem Gewinn sind nochmal 15% pauschal steuerfrei (Teilfreistellung). Die verbleibende Summe müssen Sie nur **zur Hälfte (50%)** mit Ihrem persönlichen Einkommensteuersatz versteuern.
+
+### 3. Aktienmarkt (Depot) & Vorabpauschale
+Das Depot wird präzise nach dem **FIFO-Prinzip (First-In, First-Out)** und mit den Regeln für die **Vorabpauschale** berechnet.
+* **Vorabpauschale:** Diese "Vorab-Steuer" wird jährlich auf fiktive Erträge Ihres Depots berechnet (Basiszins 2026: 3,20%). Für Aktien-ETFs sind 30% steuerfrei. Die Steuer wird erst mit Ihrem Sparerpauschbetrag (1.000 €) verrechnet, bevor die tatsächliche Abgeltungsteuer (26,375%) greift. Gezahlte Vorabpauschalen werden beim späteren Verkauf steuermindernd angerechnet.
+* **Entnahme im Ruhestand:** Das Tool berechnet automatisch, wie viel Sie aus dem Depot entnehmen müssen, um Ihre gewünschte Nettolücke zu schließen. Da die zu zahlenden Steuern und Krankenkassenbeiträge von der Höhe der Bruttoentnahme abhängen, nutzt das Tool im Hintergrund einen **binären Suchalgorithmus**, um exakt den Bruttobetrag zu finden, der nach allen Abzügen genau Ihr Nettoziel trifft. Nur der Gewinnanteil der verkauften Anteile wird besteuert (wiederum abzüglich 30% Teilfreistellung).
+* **Tipp (ETF-Wechsel):** Um Steuern im Ruhestand zu optimieren, können Sie in der Ansparphase den besparten ETF in regelmäßigen Abständen wechseln. Im Ruhestand verkaufen Sie dann die jüngsten Anteile zuerst (LIFO-Strategie), was die Steuerlast deutlich senkt.
+
+### 4. Kranken- und Pflegeversicherung (GKV/PV)
+Die Krankenversicherung kann im Ruhestand einer der größten Kostenfaktoren sein.
+* **Angestelltenphase:** Während Sie arbeiten, wird zur Ermittlung der Steuerbasis pauschal ein **Abzug von 10%** vom Bruttogehalt für die Sozialabgaben angenommen.
+* **Privatier (Frührente vor Alter 67):** Wenn Sie nicht arbeiten, sind Sie "freiwillig gesetzlich versichert". Sie müssen auf **Ihr gesamtes Einkommen** (Depotgewinne, private Rente) volle Kranken- und Pflegebeiträge zahlen (bis zur Bemessungsgrenze von ca. 69.750 €/Jahr). Das Mindesteinkommen beträgt 14.140 €/Jahr.
+* **Gesetzliche Rente (ab Alter 67):**
+    * **KVdR (Krankenversicherung der Rentner):** Wenn Sie die Voraussetzungen erfüllen, zahlen Sie GKV-Beiträge **nur auf Ihre gesetzliche Rente** (und nur den halben Beitragssatz für die KV!). Depot und private Rente sind in der Krankenversicherung komplett **abgabenfrei**.
+    * **Freiwillig versichert:** Erfüllen Sie die KVdR nicht, zahlen Sie auch im gesetzlichen Rentenalter auf **alle** Einkunftsarten den vollen Beitragssatz.
+
+### 5. Einkommensteuer (ESt)
+Das Tool nutzt den voraussichtlichen **Einkommensteuertarif 2026**. Die Steuerlast wird nach folgenden Progressionszonen berechnet:
+* **Zone 1 (Grundfreibetrag):** 0 € bis 12.336 € (Steuerfrei)
+* **Zone 2:** Bis 17.005 € (Eingangssteuersatz)
+* **Zone 3:** Bis 66.760 € (Hauptprogressionszone)
+* **Zone 4:** Bis 277.825 € (Spitzensteuersatz von pauschal 42%)
+* **Zone 5:** Ab 277.826 € (Reichensteuer von pauschal 45%)
+
+Die Gesamtsteuerlast auf alle Ihre Einkünfte wird in nominalen Werten berechnet und im Tool proportional auf Ihre Einkommensquellen aufgeteilt, um Ihnen ein exaktes Bild Ihrer Nettobelastung zu zeigen.
+        """)
+
     with st.sidebar:
         st.header("📂 Parameter Speichern / Laden")
         st.file_uploader("Parameter laden (.json)", type=["json"], key="uploaded_file", on_change=load_params)
@@ -100,7 +150,7 @@ def main():
         'priv_initial': priv_initial, 'priv_monthly': priv_monthly,
         'priv_fee_contrib': priv_fee_contrib, 'priv_fee_balance': priv_fee_balance,
         'current_ep': current_ep,
-        'gkv_status': 'KVdR' if gkv_status_display == 'KVdR' else 'Voluntary', 
+        'gkv_status': gkv_status_display, 
         'kv_rate': kv_rate, 'pv_rate': pv_rate
     }
 
@@ -185,51 +235,6 @@ def main():
         
         st.subheader("Detaillierte jährliche Projektion")
         st.dataframe(df.round(0), use_container_width=True)
-
-        st.markdown("---")
-        st.header("Erklärung der Berechnungen und steuerlichen Details")
-        
-        st.markdown("""
-        **1. Inflation und Kaufkraftbereinigung**  
-        Alle angezeigten Werte (Vermögen, Renten, Entnahmen) sind **inflationsbereinigt**. Das bedeutet, das Tool rechnet zukünftige Summen in die **heutige Kaufkraft** um. So können Sie direkt sehen, was Ihr zukünftiges Einkommen in heutigen Preisen wert ist.
-
-        **2. Gesetzliche Rente**  
-        Die gesetzliche Rente wird anhand Ihrer gesammelten **Rentenpunkte (Entgeltpunkte, EP)** berechnet. Bis zu Ihrem Renteneintrittsalter sammeln Sie durch Ihr Gehalt weitere Punkte (gedeckelt durch die Beitragsbemessungsgrenze). Jeder Punkt wird mit dem aktuellen Rentenwert multipliziert, um Ihre Bruttorente zu ermitteln.
-        Zusätzlich gilt für den Renteneintritt im Jahr 2026 das **Kohortenprinzip**: Nur 84% der ersten vollen Rente sind steuerpflichtig. Die restlichen 16% werden als fester Steuerfreibetrag (Rentenfreibetrag) in Euro für die gesamte Laufzeit festgeschrieben. Zukünftige Rentenerhöhungen (z.B. Inflationsausgleich) sind zu 100% steuerpflichtig.
-
-        **3. Private Rentenversicherung & Halbeinkünfteverfahren (12/62-Regel)**  
-        Die private Rentenversicherung (Schicht 3) hat in diesem Tool folgende feste Phasen:
-        - **Ansparphase:** Bis Alter 50 werden monatliche Beiträge eingezahlt.
-        - **Ruhephase:** Von 50 bis 62 wächst das Kapital ohne weitere Einzahlungen.
-        - **Auszahlungsphase:** Ab Alter 62 bis 85 wird das Kapital verrentet und monatlich ausgezahlt.
-        
-        **Das Halbeinkünfteverfahren (12/62-Regel):**  
-        Wenn ein privater Rentenvertrag mindestens 12 Jahre lief und die Auszahlung frühestens ab dem 62. Lebensjahr erfolgt, greift das Halbeinkünfteverfahren. 
-        Hierbei wird nicht die gesamte Auszahlung besteuert, sondern nur der **Ertragsanteil** (Auszahlung minus eingezahlte Beiträge). Von diesem Ertrag sind zudem 15% pauschal steuerfrei (Teilfreistellung). Vom verbleibenden Betrag müssen Sie **nur die Hälfte (50%)** mit Ihrem persönlichen Einkommensteuersatz versteuern. Das macht die private Rente in der Auszahlungsphase oft steuerlich sehr attraktiv.
-
-        **4. Aktienmarkt (Depot) & Vorabpauschale**  
-        Ihr ETF- oder Aktiendepot wächst jährlich um die angenommene Rendite. Steuern fallen nicht erst beim Verkauf an, sondern jährlich durch die **Vorabpauschale**:
-        - Die Vorabpauschale besteuert fiktive Erträge Ihres Depots. 
-        - Für Aktienfonds gilt eine **Teilfreistellung von 30%**, d.h. 30% der Erträge sind steuerfrei.
-        - Auf den steuerpflichtigen Teil wird Ihr **Sparerpauschbetrag** (1.000 € pro Jahr) angerechnet.
-        - Nur der Betrag, der darüber hinausgeht, wird mit der Abgeltungsteuer (inkl. Soli ca. 26,375 %) versteuert.
-        Bei Entnahmen aus dem Depot im Ruhestand (um Ihr Ziel-Nettoeinkommen zu erreichen) wird ebenfalls nur der Gewinnanteil versteuert, abzüglich eventuell noch vorhandenem Sparerpauschbetrag.
-
-        **5. Krankenversicherung (GKV) und Frührente (Privatier)**  
-        Ein entscheidender Kostenfaktor im Ruhestand ist die Krankenversicherung:
-        - **KVdR (Krankenversicherung der Rentner):** Wenn Sie die Voraussetzungen für die KVdR erfüllen, zahlen Sie im gesetzlichen Rentenalter GKV-Beiträge **nur auf Ihre gesetzliche Rente** (und der Staat übernimmt die Hälfte). Ihr privates Rentenguthaben und Ihr Depot bleiben GKV-frei!
-        - **Freiwillig gesetzlich versichert:** Sind Sie nicht in der KVdR oder gehen Sie in **Frührente (als Privatier)**, stuft die Krankenkasse Sie als freiwillig versichert ein. In diesem Fall müssen Sie GKV- und Pflegebeiträge (ca. 20-21%) auf Ihr **gesamtes Einkommen** zahlen, also auch auf Auszahlungen aus der privaten Rente und auf Kapitalerträge aus dem Depot. Dies gilt maximal bis zur Beitragsbemessungsgrenze der GKV. Im Tool wird dies in der Phase der Frührente exakt berücksichtigt.
-
-        **6. Angenommene Renditen und Anlagezeiträume**  
-        Das Tool verwendet zwei unterschiedliche Renditen, um das typische Risiko-Rendite-Profil im Lebenszyklus abzubilden:
-        - **Rendite vor Rentenbeginn:** Diese (meist höhere) Rendite wird für die Aufbauphase angenommen. Sie gilt einheitlich für Ihr **Aktiendepot** und Ihr **privates Rentenguthaben**, solange Sie arbeiten – genauer gesagt, bis zu dem von Ihnen festgelegten *Gewünschten Renteneintrittsalter (Frührente)*.
-        - **Rendite im Ruhestand:** Exakt ab dem Jahr, in dem Sie in Rente gehen (Frührente oder gesetzliche Rente), wechselt das Tool für beide Bausteine (Depot und private Rente) auf diese (meist niedrigere) Rendite. Dies simuliert den in der Praxis typischen "Shift", bei dem das Portfolio zur Absicherung der Entnahmen in risikoärmere Anlagen (wie z. B. Anleihen) umgeschichtet wird, die weniger Rendite bringen, aber sicherer sind.
-
-        **7. Entnahmestrategie im Depot (FIFO vs. LIFO)**  
-        Um die Steuern auf Depotentnahmen im Ruhestand zu berechnen, wendet das Tool in Deutschland geltende Prinzipien an:
-        - **FIFO (First In, First Out):** Bei Wertpapieren mit derselben Kennnummer (ISIN/WKN) müssen laut Gesetz immer die Anteile zuerst verkauft werden, die zuerst gekauft wurden. Da diese Anteile in der Regel am längsten im Depot waren, haben sie die höchsten Gewinne und verursachen beim Verkauf die höchste Steuerlast.
-        - **LIFO (Last In, First Out) durch ETF-Wechsel:** Um diesem Nachteil entgegenzuwirken, können Sie im Tool eine Anzahl an "ETF-Wechseln" in der Ansparphase simulieren. Das bedeutet, Sie besparen nicht 30 Jahre lang denselben ETF, sondern wechseln z.B. alle 10 Jahre den besparten ETF (selber Index, andere WKN). Im Ruhestand können Sie dann die ETF-Anteile aus dem "jüngsten" ETF zuerst verkaufen (LIFO-Strategie über mehrere ETFs). Der Gewinn dieser jüngeren Anteile ist deutlich geringer, wodurch Sie wertvolle Steuern stunden und den Steuerstundungseffekt maximieren können. Innerhalb jedes einzelnen ETFs gilt natürlich weiterhin gesetzlich FIFO.
-        """)
 
 if __name__ == "__main__":
     main()

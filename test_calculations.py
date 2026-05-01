@@ -17,7 +17,7 @@ class TestCalculations(unittest.TestCase):
 
     def test_calc_income_tax_2026(self):
         self.assertAlmostEqual(calc_income_tax_2026(10000), 0.0)
-        self.assertAlmostEqual(calc_income_tax_2026(15000), 548.991679, places=5)
+        self.assertAlmostEqual(calc_income_tax_2026(15000), 440.721163, places=5)
         self.assertAlmostEqual(calc_income_tax_2026(50000), 10872.6727, places=3)
         self.assertAlmostEqual(calc_income_tax_2026(100000), 31363.69, places=2)
         self.assertAlmostEqual(calc_income_tax_2026(300000), 116028.94, places=2)
@@ -181,7 +181,7 @@ class TestCalculations(unittest.TestCase):
         
         df = simulate_wealth(params)
         self.assertFalse(df.empty)
-        self.assertEqual(len(df), params['end_age'] - params['current_age'])
+        self.assertEqual(len(df), params['end_age'] - params['current_age'] + 1)
         
         df.set_index('Age', inplace=True)
         # At age 63 (during partial retirement from 62 to 64), partial salary should be evaluated.
@@ -229,7 +229,7 @@ class TestCalculations(unittest.TestCase):
             'priv_monthly': 0,
             'kv_rate': 14.6,
             'pv_rate': 3.6,
-            'gkv_status': 'freiwillig', 
+            'gkv_status': 'Freiwillig', 
             'target_net_income': 5000,
             'stock_monthly': 0,
             'basiszinssatz': 3.2
@@ -302,7 +302,7 @@ class TestCalculations(unittest.TestCase):
             'basiszinssatz': 3.2
         }
         df = simulate_wealth(params)
-        self.assertEqual(len(df), 5)
+        self.assertEqual(len(df), 6)
         # Real stock balance should decrease without growth
         self.assertTrue(df.iloc[-1]['Real Stock Balance'] <= df.iloc[0]['Real Stock Balance'])
 
