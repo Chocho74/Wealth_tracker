@@ -7,8 +7,17 @@ def load_params():
     if st.session_state.uploaded_file is not None:
         try:
             loaded = json.load(st.session_state.uploaded_file)
+            allowed_keys = {
+                'current_age', 'early_retirement_age', 'end_age', 'salary',
+                'do_partial_retirement', 'partial_duration', 'partial_salary', 'target_net',
+                'inflation', 'return_pre', 'return_post', 'basiszinssatz',
+                'stock_initial', 'stock_monthly', 'etf_switches',
+                'priv_initial', 'priv_monthly', 'priv_fee_contrib', 'priv_fee_balance',
+                'current_ep', 'gkv_status_display', 'kv_rate', 'pv_rate'
+            }
             for k, v in loaded.items():
-                st.session_state[k] = v
+                if k in allowed_keys:
+                    st.session_state[k] = v
         except Exception as e:
             st.error(f"Fehler beim Laden der Datei: {e}")
 
@@ -73,53 +82,66 @@ Die Gesamtsteuerlast auf alle Ihre Einkünfte wird in nominalen Werten berechnet
     with st.sidebar:
         st.header("📂 Parameter Speichern / Laden")
         st.file_uploader("Parameter laden (.json)", type=["json"], key="uploaded_file", on_change=load_params)
+
+        # Initialize defaults in session state to avoid warning when loading json
+        defaults = {
+            'current_age': 30, 'early_retirement_age': 67, 'end_age': 95, 'salary': 60000,
+            'do_partial_retirement': False, 'partial_duration': 2, 'partial_salary': 30000.0,
+            'target_net': 3000, 'inflation': 2.0, 'return_pre': 6.0, 'return_post': 4.0,
+            'basiszinssatz': 3.20, 'stock_initial': 50000, 'stock_monthly': 500, 'etf_switches': 0,
+            'priv_initial': 10000, 'priv_monthly': 200, 'priv_fee_contrib': 0.50, 'priv_fee_balance': 0.22,
+            'current_ep': 10.0, 'gkv_status_display': "KVdR", 'kv_rate': 17.5, 'pv_rate': 3.6
+        }
+        for k, v in defaults.items():
+            if k not in st.session_state:
+                st.session_state[k] = v
         
         st.header("1. Persönliche Daten")
-        current_age = st.number_input("Aktuelles Alter", min_value=18, max_value=80, value=30, key="current_age")
-        early_retirement_age = st.number_input("Gewünschtes Renteneintrittsalter (Frührente)", min_value=50, max_value=67, value=67, key="early_retirement_age")
-        end_age = st.number_input("Endalter (Lebenserwartung)", min_value=70, max_value=120, value=95, key="end_age")
-        salary = st.number_input("Aktuelles Bruttogehalt (€/Jahr)", value=60000, step=1000, key="salary")
+        current_age = st.number_input("Aktuelles Alter", min_value=18, max_value=80, key="current_age")
+        early_retirement_age = st.number_input("Gewünschtes Renteneintrittsalter (Frührente)", min_value=50, max_value=67, key="early_retirement_age")
+        end_age = st.number_input("Endalter (Lebenserwartung)", min_value=70, max_value=120, key="end_age")
+        salary = st.number_input("Aktuelles Bruttogehalt (€/Jahr)", step=1000, key="salary")
         
         do_partial_retirement = False
         final_retirement_age = early_retirement_age
         partial_salary = 0.0
         
         if early_retirement_age < 67:
-            do_partial_retirement = st.checkbox("Nach dem Renteneintrittsalter in Altersteilzeit arbeiten?", value=False, key="do_partial_retirement")
+            do_partial_retirement = st.checkbox("Nach dem Renteneintrittsalter in Altersteilzeit arbeiten?", key="do_partial_retirement")
             if do_partial_retirement:
                 max_duration = 67 - early_retirement_age
-                partial_duration = st.number_input("Dauer der Altersteilzeit (Jahre)", min_value=1, max_value=max_duration, value=min(2, max_duration), step=1, key="partial_duration")
+                partial_duration = st.number_input("Dauer der Altersteilzeit (Jahre)", min_value=1, max_value=max_duration, step=1, key="partial_duration")
                 final_retirement_age = early_retirement_age + partial_duration
-                partial_salary = st.number_input("Geschätztes Bruttogehalt in Altersteilzeit (€/Jahr)", value=30000.0, step=1000.0, key="partial_salary")
+                partial_salary = st.number_input("Geschätztes Bruttogehalt in Altersteilzeit (€/Jahr)", step=1000.0, key="partial_salary")
                 
-        target_net = st.number_input("Ziel-Nettoeinkommen im Ruhestand (€/Monat)", value=3000, step=100, key="target_net")
+        target_net = st.number_input("Ziel-Nettoeinkommen im Ruhestand (€/Monat)", step=100, key="target_net")
         
         st.header("2. Wirtschaftliche Annahmen")
-        inflation = st.number_input("Inflationsrate (%)", value=2.0, step=0.1, key="inflation")
-        return_pre = st.number_input("Rendite vor Rentenbeginn (%)", value=6.0, step=0.1, key="return_pre")
-        return_post = st.number_input("Rendite im Ruhestand (%)", value=4.0, step=0.1, key="return_post")
-        basiszinssatz = st.number_input("Basiszinssatz Vorabpauschale 2026 (%)", value=3.20, step=0.1, key="basiszinssatz")
+        inflation = st.number_input("Inflationsrate (%)", step=0.1, key="inflation")
+        return_pre = st.number_input("Rendite vor Rentenbeginn (%)", step=0.1, key="return_pre")
+        return_post = st.number_input("Rendite im Ruhestand (%)", step=0.1, key="return_post")
+        basiszinssatz = st.number_input("Basiszinssatz Vorabpauschale 2026 (%)", step=0.1, key="basiszinssatz")
         
         st.header("3. Aktienmarkt (Depot)")
-        stock_initial = st.number_input("Aktueller Depotbestand (€)", value=50000, step=1000, key="stock_initial")
-        stock_monthly = st.number_input("Monatliche Sparrate (€)", value=500, step=50, key="stock_monthly")
-        etf_switches = st.number_input("Anzahl ETF-Wechsel in der Ansparphase", min_value=0, max_value=10, value=0, step=1, key="etf_switches")
+        stock_initial = st.number_input("Aktueller Depotbestand (€)", step=1000, key="stock_initial")
+        stock_monthly = st.number_input("Monatliche Sparrate (€)", step=50, key="stock_monthly")
+        etf_switches = st.number_input("Anzahl ETF-Wechsel in der Ansparphase", min_value=0, max_value=10, step=1, key="etf_switches")
         st.caption("LIFO-Strategie: Wenn Sie während der Ansparphase ETFs wechseln, wird im Ruhestand der jeweils jüngste ETF zuerst verkauft. Innerhalb des ETFs gilt das FIFO-Prinzip.")
         
         st.header("4. Private Rente (Schicht 3)")
-        priv_initial = st.number_input("Aktuelles Rentenguthaben (€)", value=10000, step=1000, key="priv_initial")
-        priv_monthly = st.number_input("Monatlicher Beitrag (€)", value=200, step=50, key="priv_monthly")
-        priv_fee_contrib = st.number_input("Gebühr auf Einzahlungen (%)", value=0.50, step=0.10, key="priv_fee_contrib")
-        priv_fee_balance = st.number_input("Jährliche Gebühr auf Guthaben (%)", value=0.22, step=0.01, key="priv_fee_balance")
+        priv_initial = st.number_input("Aktuelles Rentenguthaben (€)", step=1000, key="priv_initial")
+        priv_monthly = st.number_input("Monatlicher Beitrag (€)", step=50, key="priv_monthly")
+        priv_fee_contrib = st.number_input("Gebühr auf Einzahlungen (%)", step=0.10, key="priv_fee_contrib")
+        priv_fee_balance = st.number_input("Jährliche Gebühr auf Guthaben (%)", step=0.01, key="priv_fee_balance")
         
         st.header("5. Gesetzliche Rente")
-        current_ep = st.number_input("Aktuelle Rentenpunkte (EP)", value=10.0, step=1.0, key="current_ep")
+        current_ep = st.number_input("Aktuelle Rentenpunkte (EP)", step=1.0, key="current_ep")
         
         st.header("6. Krankenversicherung")
         gkv_status_display = st.selectbox("GKV-Status im Ruhestand", ["KVdR", "Freiwillig"], key="gkv_status_display")
         st.caption("KVdR: GKV nur auf gesetzliche Rente. Freiwillig: GKV auf das GESAMTE Einkommen (Depot, private Rente).")
-        kv_rate = st.number_input("GKV-Beitragssatz + Zusatzbeitrag (%)", value=17.5, step=0.1, key="kv_rate")
-        pv_rate = st.number_input("Beitragssatz Pflegeversicherung (PV) (%)", value=3.6, step=0.1, key="pv_rate")
+        kv_rate = st.number_input("GKV-Beitragssatz + Zusatzbeitrag (%)", step=0.1, key="kv_rate")
+        pv_rate = st.number_input("Beitragssatz Pflegeversicherung (PV) (%)", step=0.1, key="pv_rate")
 
         # Create dict to save
         save_dict = {

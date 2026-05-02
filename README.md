@@ -2,6 +2,8 @@
 
 Ein interaktives Python-Tool (mit Streamlit) zur ganzheitlichen Projektion und Planung der Altersvorsorge in Deutschland. Die Simulation basiert auf den steuerlichen und rechtlichen Rahmenbedingungen für das Jahr 2026.
 
+Online nutzbar unter: https://wealthtracker-chocho.streamlit.app/
+
 ## 📌 Über das Projekt
 
 Dieses Tool modelliert den langfristigen Vermögensaufbau und die Entnahmephase unter Berücksichtigung der drei wesentlichen Säulen:
