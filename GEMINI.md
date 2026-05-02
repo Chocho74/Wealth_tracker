@@ -44,7 +44,7 @@ The following constants are immutable for this project. All calculations in `cal
 - **Partial retirtement** it is possible to retire earlier than with 67 years old and work partial for some years. 
 
 ## 4. Technical Requirements
-- **Language:** Python 3.12+
+- **Language:** Python 3.10.9
 - **Framework:** Streamlit for UI, Plotly for Interactive Charts.
 - **Architecture:** Keep logic in `calculations.py` and UI in `app.py`.
 - **Formatting:** Use Type Hints and Docstrings for all functions.
