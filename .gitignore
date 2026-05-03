@@ -71,3 +71,6 @@ venv.bak/
 
 # macOS
 .DS_Store
+
+# private
+rentenplaner_params_default.json

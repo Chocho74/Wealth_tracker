@@ -28,6 +28,22 @@ def main():
     Dieses Tool modelliert den Aufbau und die Entnahme Ihrer Säulen der Altersvorsorge. 
     Es berücksichtigt die **Vorabpauschale**, das **Halbeinkünfteverfahren (12/62)** und den wichtigen Unterschied zwischen **KVdR** und **freiwilliger GKV**.
     """)
+    
+    if 'show_disclaimer' not in st.session_state:
+        st.session_state.show_disclaimer = False
+
+    def toggle_disclaimer():
+        st.session_state.show_disclaimer = not st.session_state.show_disclaimer
+
+    st.button("⚠️ Disclaimer", on_click=toggle_disclaimer)
+
+    if st.session_state.show_disclaimer:
+        st.warning("""
+        **Disclaimer (Haftungsausschluss):** Dieses Tool dient ausschließlich zu Informations- und Bildungszwecken. Es stellt keine Finanz-, Steuer- oder Rechtsberatung dar. 
+        Die Berechnungen basieren auf den gesetzlichen Regelungen und Parametern des Jahres 2026, welche sich in Zukunft jederzeit ändern können. 
+        Alle Ergebnisse sind stark vereinfachte Modellrechnungen und Schätzungen. Für die tatsächliche Richtigkeit, Vollständigkeit und Anwendbarkeit der Berechnungen auf Ihre persönliche Situation wird keine Gewähr übernommen.
+        Bitte konsultieren Sie für verlässliche Planungen einen qualifizierten Steuerberater oder Finanzexperten.
+        """)
 
     if 'show_info' not in st.session_state:
         st.session_state.show_info = False
@@ -257,6 +273,9 @@ Die Gesamtsteuerlast auf alle Ihre Einkünfte wird in nominalen Werten berechnet
         
         st.subheader("Detaillierte jährliche Projektion")
         st.dataframe(df.round(0), use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("<div style='text-align: center; color: gray;'><small>Bei Fragen oder Anregungen kontaktieren Sie mich gerne unter: <a href='mailto:ericguenl@gmail.com'>ericguenl@gmail.com</a> | <a href='https://github.com/Chocho74/Wealth_tracker' target='_blank'>Projekt auf GitHub ansehen</a></small></div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
