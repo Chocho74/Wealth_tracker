@@ -1,8 +1,8 @@
 # Deutscher Rentenplaner (Wealth Tracker)
 
-Ein interaktives Python-Tool (mit Streamlit) zur ganzheitlichen Projektion und Planung der Altersvorsorge in Deutschland. Die Simulation basiert auf den steuerlichen und rechtlichen Rahmenbedingungen für das Jahr 2026.
+Ein interaktives Python-Tool (mit NiceGUI) zur ganzheitlichen Projektion und Planung der Altersvorsorge in Deutschland. Die Simulation basiert auf den steuerlichen und rechtlichen Rahmenbedingungen für das Jahr 2026.
 
-Online nutzbar unter: https://wealthtracker-chocho.streamlit.app/
+Online nutzbar unter: *Deployment auf Hugging Face Spaces geplant*
 
 ## 📌 Über das Projekt
 
@@ -18,7 +18,7 @@ Alle ausgegebenen Werte und Grafiken sind **inflationsbereinigt (Kaufkraftberein
 
 ## 🚀 Features
 
-*   **Interaktive UI:** Übersichtliche Eingabemasken für persönliche Daten, Annahmen und bestehendes Vermögen via Streamlit.
+*   **Responsive UI:** Übersichtliche Eingabemasken und Dashboard-Ansicht optimiert für Desktop und Mobile mit **NiceGUI**.
 *   **Akkurate Steuerlogik (2026):**
     *   Einkommensteuertarif 2026 inkl. Beitragsbemessungsgrenzen.
     *   Abgeltungsteuer (25 % + Soli) und Vorabpauschale.
@@ -33,7 +33,7 @@ Alle ausgegebenen Werte und Grafiken sind **inflationsbereinigt (Kaufkraftberein
 
 ### Voraussetzungen
 *   **Python 3.10.9** (Zwingend erforderlich gem. Projektvorgaben)
-*   Empfohlen: Eine virtuelle Umgebung (venv)
+*   Conda (empfohlen für das Environment-Setup)
 
 ### Setup
 
@@ -43,38 +43,34 @@ Alle ausgegebenen Werte und Grafiken sind **inflationsbereinigt (Kaufkraftberein
     cd Wealth_tracker
     ```
 
-2. Virtuelle Umgebung erstellen und aktivieren (optional, aber empfohlen):
+2. Conda-Umgebung erstellen und aktivieren:
     ```bash
-    python -m venv .venv
-    # Windows:
-    .venv\Scripts\activate
-    # macOS/Linux:
-    source .venv/bin/activate
+    conda create -n wealth python=3.10.9 -y
+    conda activate wealth
     ```
 
 3. Abhängigkeiten installieren:
     ```bash
     pip install -r requirements.txt
     ```
-    *(Hinweis: Falls die `requirements.txt` nicht existiert, installieren Sie die benötigten Pakete manuell: `pip install streamlit plotly pandas`)*
 
 ### App starten
 
-Starten Sie die Streamlit-App mit folgendem Befehl:
+Starten Sie die App mit folgendem Befehl:
 
 ```bash
-streamlit run app.py
+python app.py
 ```
 
-Ihr Standard-Webbrowser öffnet sich daraufhin automatisch unter `http://localhost:8501` mit der Benutzeroberfläche des Rentenplaners.
+Ihr Standard-Webbrowser öffnet sich daraufhin automatisch unter `http://127.0.0.1:8080` (bzw. dem von NiceGUI angezeigten Port) mit der Benutzeroberfläche des Rentenplaners.
 
 ## 🏗️ Projektstruktur
 
-*   `app.py`: Enthält die Streamlit-Benutzeroberfläche und die Definition der Eingabeparameter sowie die Diagrammerstellung.
+*   `app.py`: Enthält die NiceGUI-Benutzeroberfläche, die Definition der Eingabeparameter und die Diagrammerstellung.
 *   `calculations.py`: Beinhaltet die gesamte Geschäftslogik, Steueralgorithmen, FIFO-Logik für Depots und die Jahressimulation.
 *   `test_calculations.py`: Test-Datei zur Validierung der Berechnungslogik.
 *   `GEMINI.md`: Enthält die zugrunde liegenden mathematischen Konstanten und Projekt-Regularien für das Jahr 2026.
 *   `WEALTH_PROJECTION_EXPLANATION.md`: Detaillierte Dokumentation zur Berechnungslogik, Steuern und Rentenregeln.
 
 ## ⚠️ Disclaimer
-Dieses Tool ist ein privates Projekt für Bildungs- und Planungszwecke und stellt **keine Anlage- oder Steuerberatung** dar. Steuergesetze und Sozialabgaben können sich ändern. Die Berechnungen, insbesondere in der Zukunft, basieren auf Annahmen und Schätzungen. Der Code wurde mit AI assistance geschrieben. 
+Dieses Tool ist ein privates Projekt für Bildungs- und Planungszwecke und stellt **keine Anlage- oder Steuerberatung** dar. Steuergesetze und Sozialabgaben können sich ändern. Die Berechnungen, insbesondere in der Zukunft, basieren auf Annahmen und Schätzungen. Der Code wurde mit AI assistance geschrieben.
