@@ -45,6 +45,8 @@ The following constants are immutable for this project. All calculations in `cal
 
 ## 4. Technical Requirements
 - **Language:** Python 3.10.9
-- **Framework:** Streamlit for UI, Plotly for Interactive Charts.
+- **Framework:** Migration to NiceGUI for responsive Mobile and Desktop UI (replacing Streamlit). Plotly for Interactive Charts.
+- **Hosting/Deployment:** Planned for Hugging Face Spaces (to be set up after UI redesign).
 - **Architecture:** Keep logic in `calculations.py` and UI in `app.py`.
 - **Formatting:** Use Type Hints and Docstrings for all functions.
+- **Branching Strategy:** New NiceGUI development takes place on the `develop` branch to keep the `main` app functional during the rewrite.

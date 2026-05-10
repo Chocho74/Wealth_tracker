@@ -1,281 +1,282 @@
-import streamlit as st
-import plotly.express as px
 import json
+from nicegui import ui, app, events
+import plotly.express as px
+import pandas as pd
 from calculations import simulate_wealth, calculate_flat_savings_equivalent
 
-def load_params():
-    if st.session_state.uploaded_file is not None:
-        try:
-            loaded = json.load(st.session_state.uploaded_file)
-            allowed_keys = {
-                'current_age', 'early_retirement_age', 'end_age', 'salary',
-                'do_partial_retirement', 'partial_duration', 'partial_salary', 'target_net',
-                'inflation', 'return_pre', 'return_post', 'basiszinssatz',
-                'stock_initial', 'stock_monthly', 'etf_switches',
-                'priv_initial', 'priv_monthly', 'priv_fee_contrib', 'priv_fee_balance',
-                'current_ep', 'gkv_status_display', 'kv_rate', 'pv_rate'
-            }
-            for k, v in loaded.items():
-                if k in allowed_keys:
-                    st.session_state[k] = v
-        except Exception as e:
-            st.error(f"Fehler beim Laden der Datei: {e}")
+class AppState:
+    def __init__(self):
+        self.current_age = 30
+        self.early_retirement_age = 67
+        self.end_age = 95
+        self.salary = 60000
+        self.do_partial_retirement = False
+        self.partial_duration = 2
+        self.partial_salary = 30000.0
+        self.target_net = 3000
+        self.inflation = 2.0
+        self.return_pre = 6.0
+        self.return_post = 4.0
+        self.basiszinssatz = 3.20
+        self.stock_initial = 50000
+        self.stock_monthly = 500
+        self.etf_switches = 0
+        self.priv_initial = 10000
+        self.priv_monthly = 200
+        self.priv_fee_contrib = 0.50
+        self.priv_fee_balance = 0.22
+        self.current_ep = 10.0
+        self.gkv_status_display = "KVdR"
+        self.kv_rate = 17.5
+        self.pv_rate = 3.6
 
-def main():
-    st.set_page_config(page_title="Deutscher Rentenplaner", layout="wide", page_icon="📈")
-    st.title("Deutsches Vermögens- & Rentenprojektions-Tool")
-    st.markdown("""
-    Dieses Tool modelliert den Aufbau und die Entnahme Ihrer Säulen der Altersvorsorge. 
-    Es berücksichtigt die **Vorabpauschale**, das **Halbeinkünfteverfahren (12/62)** und den wichtigen Unterschied zwischen **KVdR** und **freiwilliger GKV**.
-    """)
+state = AppState()
+results_container = None
+
+def run_simulation():
+    global results_container
+    results_container.clear()
     
-    if 'show_disclaimer' not in st.session_state:
-        st.session_state.show_disclaimer = False
-
-    def toggle_disclaimer():
-        st.session_state.show_disclaimer = not st.session_state.show_disclaimer
-
-    st.button("⚠️ Disclaimer", on_click=toggle_disclaimer)
-
-    if st.session_state.show_disclaimer:
-        st.warning("""
-        **Disclaimer (Haftungsausschluss):** Dieses Tool dient ausschließlich zu Informations- und Bildungszwecken. Es stellt keine Finanz-, Steuer- oder Rechtsberatung dar. 
-        Die Berechnungen basieren auf den gesetzlichen Regelungen und Parametern des Jahres 2026, welche sich in Zukunft jederzeit ändern können. 
-        Alle Ergebnisse sind stark vereinfachte Modellrechnungen und Schätzungen. Für die tatsächliche Richtigkeit, Vollständigkeit und Anwendbarkeit der Berechnungen auf Ihre persönliche Situation wird keine Gewähr übernommen.
-        Bitte konsultieren Sie für verlässliche Planungen einen qualifizierten Steuerberater oder Finanzexperten.
-        """)
-
-    if 'show_info' not in st.session_state:
-        st.session_state.show_info = False
-
-    def toggle_info():
-        st.session_state.show_info = not st.session_state.show_info
-
-    st.button("ℹ️ INFO: Berechnungs- und Steuerdetails anzeigen", on_click=toggle_info)
-
-    if st.session_state.show_info:
-        st.info("""
-### 💡 Allgemeine Berechnungsgrundlage (Inflation)
-Alle internen Berechnungen des Tools finden in **nominalen Werten** statt (also unter Einbeziehung der Inflation über die Jahre). Um Ihnen jedoch ein intuitives Verständnis zu geben, werden alle ausgegebenen Zahlen (Vermögen, Steuern, Entnahmen) in die **heutige Kaufkraft (real)** zurückgerechnet.
-
-### 1. Gesetzliche Rente (GRV)
-Die gesetzliche Rente wird durch das Sammeln von **Rentenpunkten (Entgeltpunkten, EP)** simuliert.
-* **Ansparphase:** Während Sie arbeiten, wird Ihr Bruttogehalt durch das Durchschnittsentgelt (ca. 51.944 € für 2026) geteilt, um Ihre jährlichen Rentenpunkte zu ermitteln. Das maximal anrechenbare Gehalt ist durch die Beitragsbemessungsgrenze (101.400 €) gedeckelt. Altersteilzeit wird ebenfalls unterstützt und bringt proportionale Punkte.
-* **Auszahlungsphase (ab 67):** Jeder gesammelte Rentenpunkt ist monatlich 42,52 € wert (Rentenwert 2026).
-
-### 2. Private Rentenversicherung
-Die private Rente ist in drei Phasen unterteilt und nutzt steuerlich das attraktive **Halbeinkünfteverfahren (12/62-Regel)**:
-* **Phase 1 (Bis Alter 50):** Sie zahlen monatlich ein. Nach Abzug einer Abschlussgebühr (z.B. 0,50%) wächst Ihr Geld am Kapitalmarkt, abzüglich einer laufenden Verwaltungsgebühr (z.B. 0,22%).
-* **Phase 2 (Alter 50 bis 62):** Die Einzahlungen stoppen, aber das Kapital wächst weiter.
-* **Phase 3 (Alter 62 bis 85):** Das Kapital wird als lebenslange Rente (bzw. bis Alter 85) ausgezahlt.
-* **Besteuerung (12/62-Regel):** Da der Vertrag über 12 Jahre lief und erst ab Alter 62 ausgezahlt wird, ist nur der **Gewinn** steuerpflichtig. Der Gewinn ist definiert als die **Bruttoauszahlung minus dem proportionalen Anteil der ursprünglichen Einzahlungen**. Von diesem Gewinn sind nochmal 15% pauschal steuerfrei (Teilfreistellung). Die verbleibende Summe müssen Sie nur **zur Hälfte (50%)** mit Ihrem persönlichen Einkommensteuersatz versteuern.
-
-### 3. Aktienmarkt (Depot) & Vorabpauschale
-Das Depot wird präzise nach dem **FIFO-Prinzip (First-In, First-Out)** und mit den Regeln für die **Vorabpauschale** berechnet.
-* **Vorabpauschale:** Diese "Vorab-Steuer" wird jährlich auf fiktive Erträge Ihres Depots berechnet (Basiszins 2026: 3,20%). Für Aktien-ETFs sind 30% steuerfrei. Die Steuer wird erst mit Ihrem Sparerpauschbetrag (1.000 €) verrechnet, bevor die tatsächliche Abgeltungsteuer (26,375%) greift. Gezahlte Vorabpauschalen werden beim späteren Verkauf steuermindernd angerechnet.
-* **Entnahme im Ruhestand:** Das Tool berechnet automatisch, wie viel Sie aus dem Depot entnehmen müssen, um Ihre gewünschte Nettolücke zu schließen. Da die zu zahlenden Steuern und Krankenkassenbeiträge von der Höhe der Bruttoentnahme abhängen, nutzt das Tool im Hintergrund einen **binären Suchalgorithmus**, um exakt den Bruttobetrag zu finden, der nach allen Abzügen genau Ihr Nettoziel trifft. Nur der Gewinnanteil der verkauften Anteile wird besteuert (wiederum abzüglich 30% Teilfreistellung).
-* **Tipp (ETF-Wechsel):** Um Steuern im Ruhestand zu optimieren, können Sie in der Ansparphase den besparten ETF in regelmäßigen Abständen wechseln. Im Ruhestand verkaufen Sie dann die jüngsten Anteile zuerst (LIFO-Strategie), was die Steuerlast deutlich senkt.
-
-### 4. Kranken- und Pflegeversicherung (GKV/PV)
-Die Krankenversicherung kann im Ruhestand einer der größten Kostenfaktoren sein.
-* **Angestelltenphase:** Während Sie arbeiten, wird zur Ermittlung der Steuerbasis pauschal ein **Abzug von 10%** vom Bruttogehalt für die Sozialabgaben angenommen.
-* **Privatier (Frührente vor Alter 67):** Wenn Sie nicht arbeiten, sind Sie "freiwillig gesetzlich versichert". Sie müssen auf **Ihr gesamtes Einkommen** (Depotgewinne, private Rente) volle Kranken- und Pflegebeiträge zahlen (bis zur Bemessungsgrenze von ca. 69.750 €/Jahr). Das Mindesteinkommen beträgt 14.140 €/Jahr.
-* **Gesetzliche Rente (ab Alter 67):**
-    * **KVdR (Krankenversicherung der Rentner):** Wenn Sie die Voraussetzungen erfüllen, zahlen Sie GKV-Beiträge **nur auf Ihre gesetzliche Rente** (und nur den halben Beitragssatz für die KV!). Depot und private Rente sind in der Krankenversicherung komplett **abgabenfrei**.
-    * **Freiwillig versichert:** Erfüllen Sie die KVdR nicht, zahlen Sie auch im gesetzlichen Rentenalter auf **alle** Einkunftsarten den vollen Beitragssatz.
-
-### 5. Einkommensteuer (ESt)
-Das Tool nutzt den voraussichtlichen **Einkommensteuertarif 2026**. Die Steuerlast wird nach folgenden Progressionszonen berechnet:
-* **Zone 1 (Grundfreibetrag):** 0 € bis 12.336 € (Steuerfrei)
-* **Zone 2:** Bis 17.005 € (Eingangssteuersatz)
-* **Zone 3:** Bis 66.760 € (Hauptprogressionszone)
-* **Zone 4:** Bis 277.825 € (Spitzensteuersatz von pauschal 42%)
-* **Zone 5:** Ab 277.826 € (Reichensteuer von pauschal 45%)
-
-Die Gesamtsteuerlast auf alle Ihre Einkünfte wird in nominalen Werten berechnet und im Tool proportional auf Ihre Einkommensquellen aufgeteilt, um Ihnen ein exaktes Bild Ihrer Nettobelastung zu zeigen.
-        """)
-
-    with st.sidebar:
-        st.header("📂 Parameter Speichern / Laden")
-        st.file_uploader("Parameter laden (.json)", type=["json"], key="uploaded_file", on_change=load_params)
-
-        # Initialize defaults in session state to avoid warning when loading json
-        defaults = {
-            'current_age': 30, 'early_retirement_age': 67, 'end_age': 95, 'salary': 60000,
-            'do_partial_retirement': False, 'partial_duration': 2, 'partial_salary': 30000.0,
-            'target_net': 3000, 'inflation': 2.0, 'return_pre': 6.0, 'return_post': 4.0,
-            'basiszinssatz': 3.20, 'stock_initial': 50000, 'stock_monthly': 500, 'etf_switches': 0,
-            'priv_initial': 10000, 'priv_monthly': 200, 'priv_fee_contrib': 0.50, 'priv_fee_balance': 0.22,
-            'current_ep': 10.0, 'gkv_status_display': "KVdR", 'kv_rate': 17.5, 'pv_rate': 3.6
-        }
-        for k, v in defaults.items():
-            if k not in st.session_state:
-                st.session_state[k] = v
+    final_retirement_age = state.early_retirement_age
+    if state.early_retirement_age < 67 and state.do_partial_retirement:
+        final_retirement_age = state.early_retirement_age + state.partial_duration
         
-        st.header("1. Persönliche Daten")
-        current_age = st.number_input("Aktuelles Alter", min_value=18, max_value=80, key="current_age")
-        early_retirement_age = st.number_input("Gewünschtes Renteneintrittsalter (Frührente)", min_value=50, max_value=67, key="early_retirement_age")
-        end_age = st.number_input("Endalter (Lebenserwartung)", min_value=70, max_value=120, key="end_age")
-        salary = st.number_input("Aktuelles Bruttogehalt (€/Jahr)", step=1000, key="salary")
-        
-        do_partial_retirement = False
-        final_retirement_age = early_retirement_age
-        partial_salary = 0.0
-        
-        if early_retirement_age < 67:
-            do_partial_retirement = st.checkbox("Nach dem Renteneintrittsalter in Altersteilzeit arbeiten?", key="do_partial_retirement")
-            if do_partial_retirement:
-                max_duration = 67 - early_retirement_age
-                partial_duration = st.number_input("Dauer der Altersteilzeit (Jahre)", min_value=1, max_value=max_duration, step=1, key="partial_duration")
-                final_retirement_age = early_retirement_age + partial_duration
-                partial_salary = st.number_input("Geschätztes Bruttogehalt in Altersteilzeit (€/Jahr)", step=1000.0, key="partial_salary")
-                
-        target_net = st.number_input("Ziel-Nettoeinkommen im Ruhestand (€/Monat)", step=100, key="target_net")
-        
-        st.header("2. Wirtschaftliche Annahmen")
-        inflation = st.number_input("Inflationsrate (%)", step=0.1, key="inflation")
-        return_pre = st.number_input("Rendite vor Rentenbeginn (%)", step=0.1, key="return_pre")
-        return_post = st.number_input("Rendite im Ruhestand (%)", step=0.1, key="return_post")
-        basiszinssatz = st.number_input("Basiszinssatz Vorabpauschale 2026 (%)", step=0.1, key="basiszinssatz")
-        
-        st.header("3. Aktienmarkt (Depot)")
-        stock_initial = st.number_input("Aktueller Depotbestand (€)", step=1000, key="stock_initial")
-        stock_monthly = st.number_input("Monatliche Sparrate (€)", step=50, key="stock_monthly")
-        etf_switches = st.number_input("Anzahl ETF-Wechsel in der Ansparphase", min_value=0, max_value=10, step=1, key="etf_switches")
-        st.caption("LIFO-Strategie: Wenn Sie während der Ansparphase ETFs wechseln, wird im Ruhestand der jeweils jüngste ETF zuerst verkauft. Innerhalb des ETFs gilt das FIFO-Prinzip.")
-        
-        st.header("4. Private Rente (Schicht 3)")
-        priv_initial = st.number_input("Aktuelles Rentenguthaben (€)", step=1000, key="priv_initial")
-        priv_monthly = st.number_input("Monatlicher Beitrag (€)", step=50, key="priv_monthly")
-        priv_fee_contrib = st.number_input("Gebühr auf Einzahlungen (%)", step=0.10, key="priv_fee_contrib")
-        priv_fee_balance = st.number_input("Jährliche Gebühr auf Guthaben (%)", step=0.01, key="priv_fee_balance")
-        
-        st.header("5. Gesetzliche Rente")
-        current_ep = st.number_input("Aktuelle Rentenpunkte (EP)", step=1.0, key="current_ep")
-        
-        st.header("6. Krankenversicherung")
-        gkv_status_display = st.selectbox("GKV-Status im Ruhestand", ["KVdR", "Freiwillig"], key="gkv_status_display")
-        st.caption("KVdR: GKV nur auf gesetzliche Rente. Freiwillig: GKV auf das GESAMTE Einkommen (Depot, private Rente).")
-        kv_rate = st.number_input("GKV-Beitragssatz + Zusatzbeitrag (%)", step=0.1, key="kv_rate")
-        pv_rate = st.number_input("Beitragssatz Pflegeversicherung (PV) (%)", step=0.1, key="pv_rate")
-
-        # Create dict to save
-        save_dict = {
-            "current_age": current_age, "early_retirement_age": early_retirement_age, "end_age": end_age,
-            "salary": salary, "do_partial_retirement": do_partial_retirement, "partial_duration": partial_duration if 'partial_duration' in locals() else 2,
-            "partial_salary": partial_salary, "target_net": target_net,
-            "inflation": inflation, "return_pre": return_pre, "return_post": return_post, "basiszinssatz": basiszinssatz,
-            "stock_initial": stock_initial, "stock_monthly": stock_monthly, "etf_switches": etf_switches,
-            "priv_initial": priv_initial, "priv_monthly": priv_monthly, "priv_fee_contrib": priv_fee_contrib, "priv_fee_balance": priv_fee_balance,
-            "current_ep": current_ep, "gkv_status_display": gkv_status_display, "kv_rate": kv_rate, "pv_rate": pv_rate
-        }
-        
-        st.download_button(
-            label="💾 Aktuelle Parameter speichern",
-            data=json.dumps(save_dict, indent=4),
-            file_name="rentenplaner_params.json",
-            mime="application/json",
-            use_container_width=True
-        )
-
-
     params = {
-        'current_age': current_age, 'end_age': end_age, 'early_retirement_age': early_retirement_age, 
-        'salary': salary, 'partial_salary': partial_salary, 'target_net_income': target_net,
-        'do_partial_ret': do_partial_retirement, 'final_ret_age': final_retirement_age,
-        'inflation': inflation, 'return_pre': return_pre, 'return_post': return_post, 'basiszinssatz': basiszinssatz,
-        'stock_initial': stock_initial, 'stock_monthly': stock_monthly, 'etf_switches': etf_switches,
-        'priv_initial': priv_initial, 'priv_monthly': priv_monthly,
-        'priv_fee_contrib': priv_fee_contrib, 'priv_fee_balance': priv_fee_balance,
-        'current_ep': current_ep,
-        'gkv_status': gkv_status_display, 
-        'kv_rate': kv_rate, 'pv_rate': pv_rate
+        'current_age': int(state.current_age), 'end_age': int(state.end_age), 'early_retirement_age': int(state.early_retirement_age), 
+        'salary': float(state.salary), 'partial_salary': float(state.partial_salary), 'target_net_income': float(state.target_net),
+        'do_partial_ret': bool(state.do_partial_retirement), 'final_ret_age': int(final_retirement_age),
+        'inflation': float(state.inflation), 'return_pre': float(state.return_pre), 'return_post': float(state.return_post), 'basiszinssatz': float(state.basiszinssatz),
+        'stock_initial': float(state.stock_initial), 'stock_monthly': float(state.stock_monthly), 'etf_switches': int(state.etf_switches),
+        'priv_initial': float(state.priv_initial), 'priv_monthly': float(state.priv_monthly),
+        'priv_fee_contrib': float(state.priv_fee_contrib), 'priv_fee_balance': float(state.priv_fee_balance),
+        'current_ep': float(state.current_ep),
+        'gkv_status': state.gkv_status_display, 
+        'kv_rate': float(state.kv_rate), 'pv_rate': float(state.pv_rate)
     }
-
-    if st.button("Simulation starten", type="primary", use_container_width=True):
+    
+    with results_container:
+        ui.label("Ergebnisse werden berechnet...").classes('text-lg text-gray-500 italic')
+    
+    # Calculate
+    try:
         df = simulate_wealth(params)
-        
-        # Calculate equivalent flat savings rates
         stock_flat, priv_flat = calculate_flat_savings_equivalent(params)
         
-        st.info(f"💡 **Info zur Inflationsanpassung:** Die Simulation geht davon aus, dass Sie Ihre monatlichen Sparraten jährlich um die Inflation ({inflation}%) erhöhen. Möchten Sie Ihre Sparrate stattdessen konstant halten, müssten Sie von Beginn an **{stock_flat:,.0f} € ins Depot** und **{priv_flat:,.0f} € in die private Rente** sparen, um exakt dasselbe nominale Endkapital zu Rentenbeginn zu erreichen.")
-        
-        # Translate dataframe columns for German UI
-        df = df.rename(columns={
-            'Age': 'Alter',
-            'Real Stock Balance': 'Realer Depotbestand',
-            'Real Priv Pension Balance': 'Reales privates Rentenguthaben',
-            'State Pension (Gross)': 'Reale Gesetzliche Rente (Brutto)',
-            'Priv Payout (Gross)': 'Reale Private Auszahlung (Brutto)',
-            'Stock Withdrawal (Gross)': 'Reale Depotentnahme (Brutto)',
-            'Partial Salary (Gross)': 'Gehalt Altersteilzeit (Brutto)',
-            'Total Taxes & GKV': 'Reale Steuern & GKV (Gesamt)',
-            'State Tax': 'Steuer auf ges. Rente',
-            'Priv Tax': 'Steuer auf priv. Rente',
-            'Stock Tax': 'Steuer auf Depotentnahme',
-            'Salary Tax': 'Steuer auf Gehalt',
-            'Vorabpauschale': 'Vorabpauschale (Depot)',
-            'GKV Cost': 'GKV & PV Beiträge',
-            'Rentenpunkte': 'Rentenpunkte (EP)'
-        })
-        
-        st.subheader("Vermögensentwicklung & Entnahme (Kaufkraftbereinigt)")
-        st.markdown("Dieses Diagramm zeigt Ihr inflationsbereinigtes Kapital und stellt die tatsächliche heutige Kaufkraft Ihres Geldes dar.")
-        
-        # Stacked Area Chart Data Prep
-        df_plot = df[['Alter', 'Realer Depotbestand', 'Reales privates Rentenguthaben']].copy()
-        
-        fig = px.area(df_plot, x='Alter', y=['Reales privates Rentenguthaben', 'Realer Depotbestand'], 
-                      title=f"Kapitalprojektion (Kaufkraftbereinigt)",
-                      labels={'value': 'Vermögen in heutiger Kaufkraft (€)', 'variable': 'Säule', 'Alter': 'Alter'},
-                      color_discrete_sequence=['#1f77b4', '#2ca02c'])
-        
-        # Add Retirement lines
-        fig.add_vline(x=early_retirement_age, line_dash="dash", line_color="purple", annotation_text=f"Alter {early_retirement_age} (Ende Vollzeit)", annotation_position="top left")
-        if do_partial_retirement:
-             fig.add_vline(x=final_retirement_age, line_dash="dash", line_color="magenta", annotation_text=f"Alter {final_retirement_age} (Ende Teilzeit)", annotation_position="top right")
-        fig.add_vline(x=62, line_dash="dash", line_color="red", annotation_text="Alter 62 (Priv. Auszahlung)", annotation_position="bottom left")
-        fig.add_vline(x=67, line_dash="dash", line_color="orange", annotation_text="Alter 67 (Gesetzl. Rente)", annotation_position="bottom right")
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.subheader("Einkommensströme im Ruhestand (Brutto, Kaufkraftbereinigt)")
-        st.markdown("Dieses Diagramm zeigt die Zusammensetzung Ihrer monatlichen Entnahmen und Renten (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.")
-        
-        df_payout = df[df['Alter'] >= early_retirement_age].copy()
-        df_payout['Reale Gesetzliche Rente (Brutto)'] /= 12
-        df_payout['Reale Private Auszahlung (Brutto)'] /= 12
-        df_payout['Gehalt Altersteilzeit (Brutto)'] /= 12
-        df_payout['Reale Depotentnahme (Brutto)'] /= 12
-        
-        fig_payout = px.bar(df_payout, x='Alter', y=['Reale Gesetzliche Rente (Brutto)', 'Reale Private Auszahlung (Brutto)', 'Gehalt Altersteilzeit (Brutto)', 'Reale Depotentnahme (Brutto)'],
-                            title="Monatliche Gesamtauszahlung (Kaufkraftbereinigt)",
-                            labels={'value': 'Auszahlung in heutiger Kaufkraft (€/Monat)', 'variable': 'Einkommensquelle', 'Alter': 'Alter'},
-                            color_discrete_sequence=['#ff7f0e', '#1f77b4', '#8c564b', '#2ca02c'])
-        st.plotly_chart(fig_payout, use_container_width=True)
+        # UI updates
+        results_container.clear()
+        with results_container:
+            ui.markdown(f"**💡 Info zur Inflationsanpassung:** Die Simulation geht davon aus, dass Sie Ihre monatlichen Sparraten jährlich um die Inflation ({state.inflation}%) erhöhen. Möchten Sie Ihre Sparrate stattdessen konstant halten, müssten Sie von Beginn an **{stock_flat:,.0f} € ins Depot** und **{priv_flat:,.0f} € in die private Rente** sparen, um exakt dasselbe nominale Endkapital zu Rentenbeginn zu erreichen.").classes('bg-blue-50 p-4 rounded-lg shadow-inner text-blue-900 border border-blue-200 mb-6')
+            
+            # Translate dataframe columns
+            df = df.rename(columns={
+                'Age': 'Alter',
+                'Real Stock Balance': 'Realer Depotbestand',
+                'Real Priv Pension Balance': 'Reales privates Rentenguthaben',
+                'State Pension (Gross)': 'Reale Gesetzliche Rente (Brutto)',
+                'Priv Payout (Gross)': 'Reale Private Auszahlung (Brutto)',
+                'Stock Withdrawal (Gross)': 'Reale Depotentnahme (Brutto)',
+                'Partial Salary (Gross)': 'Gehalt Altersteilzeit (Brutto)',
+                'Total Taxes & GKV': 'Reale Steuern & GKV (Gesamt)',
+                'State Tax': 'Steuer auf ges. Rente',
+                'Priv Tax': 'Steuer auf priv. Rente',
+                'Stock Tax': 'Steuer auf Depotentnahme',
+                'Salary Tax': 'Steuer auf Gehalt',
+                'Vorabpauschale': 'Vorabpauschale (Depot)',
+                'GKV Cost': 'GKV & PV Beiträge',
+                'Rentenpunkte': 'Rentenpunkte (EP)'
+            })
+            
+            ui.label("Vermögensentwicklung & Entnahme (Kaufkraftbereinigt)").classes('text-2xl font-bold mt-8')
+            ui.label("Dieses Diagramm zeigt Ihr inflationsbereinigtes Kapital und stellt die tatsächliche heutige Kaufkraft Ihres Geldes dar.").classes('text-gray-600 mb-4')
+            
+            df_plot = df[['Alter', 'Realer Depotbestand', 'Reales privates Rentenguthaben']].copy()
+            fig1 = px.area(df_plot, x='Alter', y=['Reales privates Rentenguthaben', 'Realer Depotbestand'], 
+                          title="Kapitalprojektion (Kaufkraftbereinigt)",
+                          labels={'value': 'Vermögen (€)', 'variable': 'Säule', 'Alter': 'Alter'},
+                          color_discrete_sequence=['#1f77b4', '#2ca02c'])
+            
+            fig1.add_vline(x=state.early_retirement_age, line_dash="dash", line_color="purple", annotation_text=f"Alter {state.early_retirement_age} (Ende Vollzeit)", annotation_position="top left")
+            if state.early_retirement_age < 67 and state.do_partial_retirement:
+                 fig1.add_vline(x=final_retirement_age, line_dash="dash", line_color="magenta", annotation_text=f"Alter {final_retirement_age} (Ende Teilzeit)", annotation_position="top right")
+            fig1.add_vline(x=62, line_dash="dash", line_color="red", annotation_text="Alter 62 (Priv. Auszahlung)", annotation_position="bottom left")
+            fig1.add_vline(x=67, line_dash="dash", line_color="orange", annotation_text="Alter 67 (Gesetzl. Rente)", annotation_position="bottom right")
+            fig1.update_layout(margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5))
+            ui.plotly(fig1).classes('w-full h-96')
+            
+            ui.label("Einkommensströme im Ruhestand (Brutto, Kaufkraftbereinigt)").classes('text-2xl font-bold mt-8')
+            ui.label("Dieses Diagramm zeigt die Zusammensetzung Ihrer monatlichen Entnahmen und Renten (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.").classes('text-gray-600 mb-4')
+            
+            df_payout = df[df['Alter'] >= state.early_retirement_age].copy()
+            df_payout['Reale Gesetzliche Rente (Brutto)'] /= 12
+            df_payout['Reale Private Auszahlung (Brutto)'] /= 12
+            df_payout['Gehalt Altersteilzeit (Brutto)'] /= 12
+            df_payout['Reale Depotentnahme (Brutto)'] /= 12
+            
+            fig2 = px.bar(df_payout, x='Alter', y=['Reale Gesetzliche Rente (Brutto)', 'Reale Private Auszahlung (Brutto)', 'Gehalt Altersteilzeit (Brutto)', 'Reale Depotentnahme (Brutto)'],
+                                title="Monatliche Gesamtauszahlung (Kaufkraftbereinigt)",
+                                labels={'value': 'Auszahlung (€/Monat)', 'variable': 'Einkommensquelle', 'Alter': 'Alter'},
+                                color_discrete_sequence=['#ff7f0e', '#1f77b4', '#8c564b', '#2ca02c'])
+            fig2.update_layout(margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5))
+            ui.plotly(fig2).classes('w-full h-96')
 
-        st.subheader("Steuern & Abgaben im Ruhestand (Kaufkraftbereinigt)")
-        st.markdown("Dieses Diagramm zeigt Ihre monatlichen Steuer- und Krankenkassenbelastungen (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.")
-        
-        df_taxes = df[df['Alter'] >= early_retirement_age].copy()
-        df_taxes['Steuer auf ges. Rente'] /= 12
-        df_taxes['Steuer auf priv. Rente'] /= 12
-        df_taxes['Steuer auf Gehalt'] /= 12
-        df_taxes['Steuer auf Depotentnahme'] /= 12
-        df_taxes['Vorabpauschale (Depot)'] /= 12
-        df_taxes['GKV & PV Beiträge'] /= 12
-        
-        fig_taxes = px.bar(df_taxes, x='Alter', y=['Steuer auf ges. Rente', 'Steuer auf priv. Rente', 'Steuer auf Gehalt', 'Steuer auf Depotentnahme', 'Vorabpauschale (Depot)', 'GKV & PV Beiträge'],
-                            title="Monatliche Steuern & Abgaben (Kaufkraftbereinigt)",
-                            labels={'value': 'Abgaben in heutiger Kaufkraft (€/Monat)', 'variable': 'Abgabenart', 'Alter': 'Alter'},
-                            color_discrete_sequence=['#d62728', '#9467bd', '#1f77b4', '#8c564b', '#17becf', '#e377c2'])
-        st.plotly_chart(fig_taxes, use_container_width=True)
-        
-        st.subheader("Detaillierte jährliche Projektion")
-        st.dataframe(df.round(0), use_container_width=True)
+            ui.label("Steuern & Abgaben im Ruhestand (Kaufkraftbereinigt)").classes('text-2xl font-bold mt-8')
+            ui.label("Dieses Diagramm zeigt Ihre monatlichen Steuer- und Krankenkassenbelastungen (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.").classes('text-gray-600 mb-4')
+            
+            df_taxes = df[df['Alter'] >= state.early_retirement_age].copy()
+            df_taxes['Steuer auf ges. Rente'] /= 12
+            df_taxes['Steuer auf priv. Rente'] /= 12
+            df_taxes['Steuer auf Gehalt'] /= 12
+            df_taxes['Steuer auf Depotentnahme'] /= 12
+            df_taxes['Vorabpauschale (Depot)'] /= 12
+            df_taxes['GKV & PV Beiträge'] /= 12
+            
+            fig3 = px.bar(df_taxes, x='Alter', y=['Steuer auf ges. Rente', 'Steuer auf priv. Rente', 'Steuer auf Gehalt', 'Steuer auf Depotentnahme', 'Vorabpauschale (Depot)', 'GKV & PV Beiträge'],
+                                title="Monatliche Steuern & Abgaben (Kaufkraftbereinigt)",
+                                labels={'value': 'Abgaben (€/Monat)', 'variable': 'Abgabenart', 'Alter': 'Alter'},
+                                color_discrete_sequence=['#d62728', '#9467bd', '#1f77b4', '#8c564b', '#17becf', '#e377c2'])
+            fig3.update_layout(margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5))
+            ui.plotly(fig3).classes('w-full h-96')
+            
+            ui.label("Detaillierte jährliche Projektion").classes('text-2xl font-bold mt-8 mb-4')
+            
+            # format df for display
+            df_display = df.round(0).copy()
+            
+            column_defs = [{'field': col, 'headerName': col, 'sortable': True, 'filter': True} for col in df_display.columns]
+            ui.aggrid({
+                'columnDefs': column_defs,
+                'rowData': df_display.to_dict('records')
+            }).classes('w-full h-96')
+            
+        # Optional: Auto-scroll to results after calculation
+        ui.run_javascript(f'document.getElementById("c{results_container.id}").scrollIntoView({{behavior: "smooth"}})')
 
-    st.markdown("---")
-    st.markdown("<div style='text-align: center; color: gray;'><small>Bei Fragen oder Anregungen kontaktieren Sie mich gerne unter: <a href='mailto:ericguenl@gmail.com'>ericguenl@gmail.com</a> | <a href='https://github.com/Chocho74/Wealth_tracker' target='_blank'>Projekt auf GitHub ansehen</a></small></div>", unsafe_allow_html=True)
+    except Exception as e:
+        results_container.clear()
+        with results_container:
+            ui.label(f"Fehler bei der Berechnung: {str(e)}").classes('text-red-500 font-bold p-4')
 
-if __name__ == "__main__":
-    main()
+@ui.page('/')
+def main_page():
+    global results_container
+    ui.page_title("Deutscher Rentenplaner")
+    
+    # Header
+    with ui.header().classes('bg-blue-600 text-white p-4 shadow-md flex justify-between items-center') as header:
+        ui.label('Deutsches Vermögens- & Rentenprojektions-Tool').classes('font-bold text-xl')
+        ui.space()
+    
+    # Main Content
+    with ui.column().classes('w-full max-w-6xl mx-auto p-4 md:p-8 gap-4'):
+        
+        ui.label("Deutsches Vermögens- & Rentenprojektions-Tool").classes('text-3xl font-extrabold text-gray-800 mb-2')
+        ui.label("Dieses Tool modelliert den Aufbau und die Entnahme Ihrer Säulen der Altersvorsorge. Es berücksichtigt unter anderem die Vorabpauschale, das Halbeinkünfteverfahren (12/62) und den Unterschied zwischen KVdR und freiwilliger GKV.").classes('text-lg text-gray-600 mb-4')
+        
+        # Settings Section
+        ui.label("⚙️ Einstellungen & Parameter").classes('text-2xl font-bold mt-4 border-b-2 border-gray-200 pb-2 w-full')
+        
+        # Load/Save Row
+        with ui.row().classes('w-full items-center bg-gray-100 p-4 rounded-lg shadow-inner justify-between mb-4 flex-wrap gap-4'):
+            with ui.row().classes('items-center gap-4'):
+                ui.label("📂 Parameter verwalten:").classes('font-bold text-gray-700')
+                async def handle_upload(e: events.UploadEventArguments):
+                    try:
+                        content = await e.file.read()
+                        data = json.loads(content.decode('utf-8'))
+                        for k, v in data.items():
+                            if hasattr(state, k):
+                                setattr(state, k, v)
+                        ui.notify("Parameter erfolgreich geladen!", type='positive')
+                        ui.update()
+                    except Exception as ex:
+                        ui.notify(f"Fehler beim Laden: {ex}", type='negative')
+                
+                ui.upload(on_upload=handle_upload, label="Laden (.json)", auto_upload=True).props('accept=.json max-files=1').classes('w-48')
+            
+            def download_params():
+                data = json.dumps(state.__dict__, indent=4)
+                ui.download(data.encode('utf-8'), 'rentenplaner_params.json')
+                
+            ui.button("💾 Aktuelle Werte speichern", on_click=download_params, color='secondary').classes('shadow-sm')
+
+        # Input Grid
+        with ui.grid(columns=1).classes('w-full gap-6 md:grid-cols-2 lg:grid-cols-3'):
+            with ui.expansion('1. Persönliche Daten', icon='person').classes('w-full bg-white shadow-md rounded-md').props('default-opened header-class="text-lg font-bold text-blue-800"'):
+                ui.number("Aktuelles Alter", min=18, max=80).bind_value(state, 'current_age').classes('w-full mb-1')
+                ui.number("Frührente (Alter)", min=50, max=67).bind_value(state, 'early_retirement_age').classes('w-full mb-1')
+                ui.number("Endalter (Lebenserwartung)", min=70, max=120).bind_value(state, 'end_age').classes('w-full mb-1')
+                ui.number("Aktuelles Bruttogehalt (€/Jahr)", step=1000).bind_value(state, 'salary').classes('w-full mb-1')
+                ui.checkbox("In Altersteilzeit arbeiten?").bind_value(state, 'do_partial_retirement').classes('mb-1')
+                with ui.column().bind_visibility_from(state, 'do_partial_retirement').classes('w-full pl-4 border-l-2 border-blue-200 mb-1'):
+                    ui.number("Dauer (Jahre)", min=1, step=1).bind_value(state, 'partial_duration').classes('w-full mb-1')
+                    ui.number("Gehalt in Teilzeit (€/Jahr)", step=1000.0).bind_value(state, 'partial_salary').classes('w-full')
+                ui.number("Ziel-Netto im Ruhestand (€/Monat)", step=100).bind_value(state, 'target_net').classes('w-full')
+
+            with ui.expansion('2. Wirtschaftliche Annahmen', icon='trending_up').classes('w-full bg-white shadow-md rounded-md').props('default-opened header-class="text-lg font-bold text-blue-800"'):
+                ui.number("Inflationsrate (%)", step=0.1).bind_value(state, 'inflation').classes('w-full mb-1')
+                ui.number("Rendite vor Rente (%)", step=0.1).bind_value(state, 'return_pre').classes('w-full mb-1')
+                ui.number("Rendite im Ruhestand (%)", step=0.1).bind_value(state, 'return_post').classes('w-full mb-1')
+                ui.number("Basiszins Vorabpauschale 2026 (%)", step=0.1).bind_value(state, 'basiszinssatz').classes('w-full')
+
+            with ui.expansion('3. Aktienmarkt (Depot)', icon='show_chart').classes('w-full bg-white shadow-md rounded-md').props('default-opened header-class="text-lg font-bold text-blue-800"'):
+                ui.number("Aktueller Depotbestand (€)", step=1000).bind_value(state, 'stock_initial').classes('w-full mb-1')
+                ui.number("Monatliche Sparrate (€)", step=50).bind_value(state, 'stock_monthly').classes('w-full mb-1')
+                ui.number("Anzahl ETF-Wechsel", min=0, max=10, step=1).bind_value(state, 'etf_switches').classes('w-full mb-1')
+                ui.label("LIFO-Strategie: Im Ruhestand wird der jüngste ETF zuerst verkauft.").classes('text-xs text-gray-500 italic')
+
+            with ui.expansion('4. Private Rente (Schicht 3)', icon='savings').classes('w-full bg-white shadow-md rounded-md').props('default-opened header-class="text-lg font-bold text-blue-800"'):
+                ui.number("Aktuelles Rentenguthaben (€)", step=1000).bind_value(state, 'priv_initial').classes('w-full mb-1')
+                ui.number("Monatlicher Beitrag (€)", step=50).bind_value(state, 'priv_monthly').classes('w-full mb-1')
+                ui.number("Gebühr Einzahlungen (%)", step=0.10).bind_value(state, 'priv_fee_contrib').classes('w-full mb-1')
+                ui.number("Jährliche Gebühr Bestand (%)", step=0.01).bind_value(state, 'priv_fee_balance').classes('w-full')
+
+            with ui.expansion('5. Gesetzliche Rente', icon='account_balance').classes('w-full bg-white shadow-md rounded-md').props('default-opened header-class="text-lg font-bold text-blue-800"'):
+                ui.number("Aktuelle Rentenpunkte (EP)", step=1.0).bind_value(state, 'current_ep').classes('w-full')
+
+            with ui.expansion('6. Krankenversicherung', icon='local_hospital').classes('w-full bg-white shadow-md rounded-md').props('default-opened header-class="text-lg font-bold text-blue-800"'):
+                ui.select(["KVdR", "Freiwillig"], label="GKV-Status").bind_value(state, 'gkv_status_display').classes('w-full mb-1')
+                ui.number("GKV-Beitragssatz + Zusatz (%)", step=0.1).bind_value(state, 'kv_rate').classes('w-full mb-1')
+                ui.number("PV-Beitragssatz (%)", step=0.1).bind_value(state, 'pv_rate').classes('w-full')
+
+        ui.button("🚀 Simulation starten", on_click=run_simulation, color='primary').classes('w-full mt-6 py-4 text-xl font-bold shadow-lg')
+
+        results_container = ui.column().classes('w-full mt-4')
+
+        with ui.expansion('⚠️ Disclaimer (Haftungsausschluss)', icon='warning').classes('w-full bg-yellow-50 border border-yellow-200 mt-8'):
+            ui.markdown("""
+            Dieses Tool dient ausschließlich zu Informations- und Bildungszwecken. Es stellt keine Finanz-, Steuer- oder Rechtsberatung dar. 
+            Die Berechnungen basieren auf den gesetzlichen Regelungen und Parametern des Jahres 2026, welche sich in Zukunft jederzeit ändern können. 
+            Alle Ergebnisse sind stark vereinfachte Modellrechnungen und Schätzungen. Für die tatsächliche Richtigkeit, Vollständigkeit und Anwendbarkeit der Berechnungen auf Ihre persönliche Situation wird keine Gewähr übernommen.
+            Bitte konsultieren Sie für verlässliche Planungen einen qualifizierten Steuerberater oder Finanzexperten.
+            """)
+            
+        with ui.expansion('ℹ️ INFO: Berechnungs- und Steuerdetails anzeigen', icon='info').classes('w-full bg-blue-50 border border-blue-200 mb-6'):
+            with ui.column().classes('w-full gap-4 p-4'):
+                with ui.card().classes('w-full shadow-sm bg-white'):
+                    ui.label('💡 Allgemeine Berechnungsgrundlage (Inflation)').classes('text-lg font-bold text-blue-800 border-b pb-2 w-full')
+                    ui.markdown('Alle internen Berechnungen des Tools finden in **nominalen Werten** statt (also unter Einbeziehung der Inflation über die Jahre). Um Ihnen jedoch ein intuitives Verständnis zu geben, werden alle ausgegebenen Zahlen (Vermögen, Steuern, Entnahmen) in die **heutige Kaufkraft (real)** zurückgerechnet.')
+
+                with ui.card().classes('w-full shadow-sm bg-white'):
+                    ui.label('1. Gesetzliche Rente (GRV)').classes('text-lg font-bold text-blue-800 border-b pb-2 w-full')
+                    ui.markdown('''Die gesetzliche Rente wird durch das Sammeln von **Rentenpunkten (Entgeltpunkten, EP)** simuliert.\n\n* **Ansparphase:** Während Sie arbeiten, wird Ihr Bruttogehalt durch das Durchschnittsentgelt (ca. 51.944 € für 2026) geteilt, um Ihre jährlichen Rentenpunkte zu ermitteln. Das maximal anrechenbare Gehalt ist durch die Beitragsbemessungsgrenze (101.400 €) gedeckelt. Altersteilzeit wird ebenfalls unterstützt und bringt proportionale Punkte.\n\n* **Auszahlungsphase (ab 67):** Jeder gesammelte Rentenpunkt ist monatlich 42,52 € wert (Rentenwert 2026).''')
+
+                with ui.card().classes('w-full shadow-sm bg-white'):
+                    ui.label('2. Private Rentenversicherung').classes('text-lg font-bold text-blue-800 border-b pb-2 w-full')
+                    ui.markdown('''Die private Rente ist in drei Phasen unterteilt und nutzt steuerlich das attraktive **Halbeinkünfteverfahren (12/62-Regel)**:\n\n* **Phase 1 (Bis Alter 50):** Sie zahlen monatlich ein. Nach Abzug einer Abschlussgebühr (z.B. 0,50%) wächst Ihr Geld am Kapitalmarkt, abzüglich einer laufenden Verwaltungsgebühr (z.B. 0,22%).\n\n* **Phase 2 (Alter 50 bis 62):** Die Einzahlungen stoppen, aber das Kapital wächst weiter.\n\n* **Phase 3 (Alter 62 bis 85):** Das Kapital wird als lebenslange Rente (bzw. bis Alter 85) ausgezahlt.\n\n* **Besteuerung (12/62-Regel):** Da der Vertrag über 12 Jahre lief und erst ab Alter 62 ausgezahlt wird, ist nur der **Gewinn** steuerpflichtig. Der Gewinn ist definiert als die **Bruttoauszahlung minus dem proportionalen Anteil der ursprünglichen Einzahlungen**. Von diesem Gewinn sind nochmal 15% pauschal steuerfrei (Teilfreistellung). Die verbleibende Summe müssen Sie nur **zur Hälfte (50%)** mit Ihrem persönlichen Einkommensteuersatz versteuern.''')
+
+                with ui.card().classes('w-full shadow-sm bg-white'):
+                    ui.label('3. Aktienmarkt (Depot) & Vorabpauschale').classes('text-lg font-bold text-blue-800 border-b pb-2 w-full')
+                    ui.markdown('''Das Depot wird präzise nach dem **FIFO-Prinzip (First-In, First-Out)** und mit den Regeln für die **Vorabpauschale** berechnet.\n\n* **Vorabpauschale:** Diese "Vorab-Steuer" wird jährlich auf fiktive Erträge Ihres Depots berechnet (Basiszins 2026: 3,20%). Für Aktien-ETFs sind 30% steuerfrei. Die Steuer wird erst mit Ihrem Sparerpauschbetrag (1.000 €) verrechnet, bevor die tatsächliche Abgeltungsteuer (26,375%) greift. Gezahlte Vorabpauschalen werden beim späteren Verkauf steuermindernd angerechnet.\n\n* **Entnahme im Ruhestand:** Das Tool berechnet automatisch, wie viel Sie aus dem Depot entnehmen müssen, um Ihre gewünschte Nettolücke zu schließen. Da die zu zahlenden Steuern und Krankenkassenbeiträge von der Höhe der Bruttoentnahme abhängen, nutzt das Tool im Hintergrund einen **binären Suchalgorithmus**, um exakt den Bruttobetrag zu finden, der nach allen Abzügen genau Ihr Nettoziel trifft. Nur der Gewinnanteil der verkauften Anteile wird besteuert (wiederum abzüglich 30% Teilfreistellung).\n\n* **Tipp (ETF-Wechsel):** Um Steuern im Ruhestand zu optimieren, können Sie in der Ansparphase den besparten ETF in regelmäßigen Abständen wechseln. Im Ruhestand verkaufen Sie dann die jüngsten Anteile zuerst (LIFO-Strategie), was die Steuerlast deutlich senkt.''')
+
+                with ui.card().classes('w-full shadow-sm bg-white'):
+                    ui.label('4. Kranken- und Pflegeversicherung (GKV/PV)').classes('text-lg font-bold text-blue-800 border-b pb-2 w-full')
+                    ui.markdown('''Die Krankenversicherung kann im Ruhestand einer der größten Kostenfaktoren sein.\n\n* **Angestelltenphase:** Während Sie arbeiten, wird zur Ermittlung der Steuerbasis pauschal ein **Abzug von 10%** vom Bruttogehalt für die Sozialabgaben angenommen.\n\n* **Privatier (Frührente vor Alter 67):** Wenn Sie nicht arbeiten, sind Sie "freiwillig gesetzlich versichert". Sie müssen auf **Ihr gesamtes Einkommen** (Depotgewinne, private Rente) volle Kranken- und Pflegebeiträge zahlen (bis zur Bemessungsgrenze von ca. 69.750 €/Jahr). Das Mindesteinkommen beträgt 14.140 €/Jahr.\n\n* **Gesetzliche Rente (ab Alter 67):**\n    * **KVdR (Krankenversicherung der Rentner):** Wenn Sie die Voraussetzungen erfüllen, zahlen Sie GKV-Beiträge **nur auf Ihre gesetzliche Rente** (und nur den halben Beitragssatz für die KV!). Depot und private Rente sind in der Krankenversicherung komplett **abgabenfrei**.\n    * **Freiwillig versichert:** Erfüllen Sie die KVdR nicht, zahlen Sie auch im gesetzlichen Rentenalter auf **alle** Einkunftsarten den vollen Beitragssatz.''')
+
+                with ui.card().classes('w-full shadow-sm bg-white'):
+                    ui.label('5. Einkommensteuer (ESt)').classes('text-lg font-bold text-blue-800 border-b pb-2 w-full')
+                    ui.markdown('''Das Tool nutzt den voraussichtlichen **Einkommensteuertarif 2026**. Die Steuerlast wird nach folgenden Progressionszonen berechnet:\n\n* **Zone 1 (Grundfreibetrag):** 0 € bis 12.336 € (Steuerfrei)\n\n* **Zone 2:** Bis 17.005 € (Eingangssteuersatz)\n\n* **Zone 3:** Bis 66.760 € (Hauptprogressionszone)\n\n* **Zone 4:** Bis 277.825 € (Spitzensteuersatz von pauschal 42%)\n\n* **Zone 5:** Ab 277.826 € (Reichensteuer von pauschal 45%)\n\nDie Gesamtsteuerlast auf alle Ihre Einkünfte wird in nominalen Werten berechnet und im Tool proportional auf Ihre Einkommensquellen aufgeteilt, um Ihnen ein exaktes Bild Ihrer Nettobelastung zu zeigen.''')
+
+    ui.markdown("<div style='text-align: center; color: gray; margin-top: 40px; margin-bottom: 40px;'><small>Bei Fragen oder Anregungen kontaktieren Sie mich gerne unter: <a href='mailto:ericguenl@gmail.com'>ericguenl@gmail.com</a> | <a href='https://github.com/Chocho74/Wealth_tracker' target='_blank'>Projekt auf GitHub ansehen</a></small></div>")
+
+if __name__ in {"__main__", "__mp_main__"}:
+    ui.run(title="Deutscher Rentenplaner", favicon="📈")
