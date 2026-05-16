@@ -45,11 +45,11 @@ def main_page():
     ui.page_title("Deutscher Rentenplaner")
     
     # Header
-    with ui.header().classes('bg-blue-600 text-white py-2 px-3 md:p-4 shadow-md flex flex-row flex-nowrap justify-between items-center') as header:
-        ui.label('Deutsches Vermögens- & Rentenprojektions-Tool').classes('font-bold text-sm sm:text-base md:text-xl leading-tight')
+    with ui.header().classes('bg-blue-600 text-white py-1 px-2 sm:py-2 sm:px-3 lg:p-4 shadow-md flex flex-row flex-nowrap justify-between items-center') as header:
+        ui.label('Deutsches Vermögens- & Rentenprojektions-Tool').classes('font-bold text-xs sm:text-sm lg:text-xl leading-tight')
         ui.space()
         dark = ui.dark_mode()
-        ui.switch('Dark Mode').classes('whitespace-nowrap flex-shrink-0 ml-2').bind_value(dark, 'value')
+        ui.switch('Dark Mode').classes('whitespace-nowrap flex-shrink-0 ml-2 text-xs sm:text-sm lg:text-base').bind_value(dark, 'value')
     
     # Main Content
     with ui.column().classes('w-full max-w-6xl mx-auto p-4 md:p-8 gap-4'):
@@ -224,7 +224,7 @@ def main_page():
                     fig1.add_vline(x=62, line_dash="dash", line_color="red", annotation_text="Alter 62 (Priv. Auszahlung)", annotation_position="bottom left")
                     fig1.add_vline(x=67, line_dash="dash", line_color="orange", annotation_text="Alter 67 (Gesetzl. Rente)", annotation_position="bottom right")
                     fig1.update_layout(dragmode=False, margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
-                    fig1.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
+                    fig1.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)', range=[state.current_age, state.end_age])
                     fig1.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
                     ui.plotly(fig1).classes('w-full h-[460px]')
                     
