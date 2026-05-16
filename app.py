@@ -81,6 +81,10 @@ def main_page():
                 .q-field__control { min-height: 50px !important; }
                 .q-field--labeled .q-field__native { padding-top: 24px !important; padding-bottom: 4px !important; }
                 .q-field--float .q-field__label { transform: translateY(-50%) scale(0.8) !important; }
+                .mobile-chart-wrapper { zoom: 0.45; }
+            }
+            @media (min-width: 769px) and (max-width: 1024px) {
+                .mobile-chart-wrapper { zoom: 0.65; }
             }
         </style>''')
 
@@ -226,7 +230,8 @@ def main_page():
                     fig1.update_layout(dragmode=False, margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
                     fig1.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)', range=[state.current_age, state.end_age])
                     fig1.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
-                    ui.plotly(fig1).classes('w-full h-[460px]')
+                    with ui.element('div').classes('w-full mobile-chart-wrapper'):
+                        ui.plotly(fig1).classes('w-full h-[460px]')
                     
                     ui.label("Einkommensströme im Ruhestand (Brutto, Kaufkraftbereinigt)").classes('text-xl md:text-2xl font-bold mt-8')
                     ui.label("Dieses Diagramm zeigt die Zusammensetzung Ihrer monatlichen Entnahmen und Renten (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.").classes('text-sm md:text-base text-gray-600 dark:text-gray-400 mb-4')
@@ -245,7 +250,8 @@ def main_page():
                     fig2.update_layout(dragmode=False, margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
                     fig2.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
                     fig2.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
-                    ui.plotly(fig2).classes('w-full h-[460px]')
+                    with ui.element('div').classes('w-full mobile-chart-wrapper'):
+                        ui.plotly(fig2).classes('w-full h-[460px]')
         
                     ui.label("Steuern & Abgaben im Ruhestand (Kaufkraftbereinigt)").classes('text-xl md:text-2xl font-bold mt-8')
                     ui.label("Dieses Diagramm zeigt Ihre monatlichen Steuer- und Krankenkassenbelastungen (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.").classes('text-sm md:text-base text-gray-600 dark:text-gray-400 mb-4')
@@ -266,7 +272,8 @@ def main_page():
                     fig3.update_layout(dragmode=False, margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
                     fig3.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
                     fig3.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
-                    ui.plotly(fig3).classes('w-full h-[460px]')
+                    with ui.element('div').classes('w-full mobile-chart-wrapper'):
+                        ui.plotly(fig3).classes('w-full h-[460px]')
                     
                     ui.label("Detaillierte jährliche Projektion").classes('text-xl md:text-2xl font-bold mt-8 mb-4')
                     
