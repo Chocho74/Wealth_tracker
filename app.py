@@ -323,4 +323,4 @@ def main_page():
     ui.markdown("<div style='text-align: center; color: gray; margin-top: 40px; margin-bottom: 40px;'><small>Bei Fragen oder Anregungen kontaktieren Sie mich gerne unter: <a href='mailto:ericguenl@gmail.com'>ericguenl@gmail.com</a> | <a href='https://github.com/Chocho74/Wealth_tracker' target='_blank'>Projekt auf GitHub ansehen</a></small></div>")
 
 if __name__ in {"__main__", "__mp_main__"}:
-    ui.run(title="Deutscher Rentenplaner", favicon="📈", reload=True)
+    ui.run(title="Deutscher Rentenplaner", favicon="📈", host="0.0.0.0", port=7860, reload=False)
