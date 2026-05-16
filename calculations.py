@@ -123,7 +123,7 @@ class WealthSimulation:
 
     def _simulate_year(self):
         """Simulates a single year, updating all state variables."""
-        self.ret = self.params['return_pre']/100.0 if self.current_year_age < self.early_ret_age else self.params['return_post']/100.0
+        self.ret = self.params['return_pre']/100.0 if self.current_year_age <= self.early_ret_age else self.params['return_post']/100.0
         self.sparerpauschbetrag = 1000.0
         self.deflator = (1 + self.inflation_rate) ** (self.current_year_age - self.age)
         
@@ -147,7 +147,7 @@ class WealthSimulation:
             shortfall, is_privatier, base_income_for_gkv, min_gkv_income, gkv_cost
         )
         
-        gkv_cost += additional_gkv
+        gkv_cost += additional_gkv + salary_gkv_deduction
         total_taxes = salary_tax + state_tax + priv_tax + stock_tax_withdrawal + stock_tax_vp + gkv_cost
         
         self._record_year(
@@ -160,14 +160,14 @@ class WealthSimulation:
         state_pension_gross = 0.0
         user_salary_gross = 0.0
         
-        if self.current_year_age < self.early_ret_age:
+        if self.current_year_age <= self.early_ret_age:
             user_salary_gross = self.params['salary'] * self.deflator
             self.ep += min(user_salary_gross / self.deflator, 101400) / 51944.0
-        elif self.do_partial_ret and self.current_year_age >= self.early_ret_age and self.current_year_age < self.final_ret_age:
+        elif self.do_partial_ret and self.current_year_age > self.early_ret_age and self.current_year_age <= self.final_ret_age:
             user_salary_gross = self.partial_salary * self.deflator
             self.ep += min(user_salary_gross / self.deflator, 101400) / 51944.0
 
-        if self.current_year_age >= self.state_ret_age:
+        if self.current_year_age > self.state_ret_age:
             state_pension_gross = self.ep * 42.52 * 12 * self.deflator
             
         return user_salary_gross, state_pension_gross
@@ -180,7 +180,7 @@ class WealthSimulation:
         fee_contrib_rate = self.params.get('priv_fee_contrib', 0.50) / 100.0
         fee_balance_rate = self.params.get('priv_fee_balance', 0.22) / 100.0
         
-        if self.current_year_age < self.priv_stop_age:
+        if self.current_year_age <= self.priv_stop_age:
             contrib = self.params['priv_monthly'] * 12 * self.deflator
             net_contrib = contrib * (1 - fee_contrib_rate)
             
@@ -194,7 +194,7 @@ class WealthSimulation:
             self.priv_balance = sum(lot['value'] for lot in self.priv_lots)
             self.priv_basis = sum(lot['basis'] for lot in self.priv_lots)
             
-        elif self.current_year_age < self.priv_payout_age:
+        elif self.current_year_age <= self.priv_payout_age:
             for lot in self.priv_lots:
                 lot['value'] = lot['value'] * (1 + self.ret) * (1 - fee_balance_rate)
             self.priv_balance = sum(lot['value'] for lot in self.priv_lots)
@@ -269,13 +269,13 @@ class WealthSimulation:
         bbg_gkv = 69750 * self.deflator
         min_gkv_income = 14140 * self.deflator 
         
-        is_employed = (self.current_year_age < self.early_ret_age) or (self.do_partial_ret and self.current_year_age < self.final_ret_age)
-        is_privatier = (not is_employed) and (self.current_year_age < self.state_ret_age)
+        is_employed = (self.current_year_age <= self.early_ret_age) or (self.do_partial_ret and self.current_year_age <= self.final_ret_age)
+        is_privatier = (not is_employed) and (self.current_year_age <= self.state_ret_age)
         
         current_assessed_income_for_gkv = 0.0
         base_income_for_gkv = 0.0
         
-        if self.current_year_age >= self.state_ret_age:
+        if self.current_year_age > self.state_ret_age:
             if self.params['gkv_status'] == 'KVdR':
                 gkv_cost = state_pension_gross * (kvdr_kv_rate + kvdr_pv_rate)
             else:
@@ -315,7 +315,7 @@ class WealthSimulation:
 
     def _calc_shortfall(self, user_salary_gross: float, state_pension_gross: float, priv_payout_gross: float, salary_tax: float, state_tax: float, priv_tax: float, salary_gkv_deduction: float, gkv_cost: float) -> float:
         """Determines the gap between required net income and the net income realized so far."""
-        target_phase_started = self.current_year_age >= min(self.early_ret_age, self.priv_payout_age)
+        target_phase_started = self.current_year_age > min(self.early_ret_age, self.priv_payout_age)
         shortfall = 0.0
         if target_phase_started:
             net_income_so_far = max(0, user_salary_gross + state_pension_gross + priv_payout_gross - salary_tax - state_tax - priv_tax - salary_gkv_deduction - gkv_cost)
@@ -336,7 +336,7 @@ class WealthSimulation:
         for lot in self.stock_lots:
             lot['value'] *= (1 + self.ret)
             
-        if self.current_year_age < self.early_ret_age:
+        if self.current_year_age <= self.early_ret_age:
             # Accumulation phase
             contrib = self.params['stock_monthly'] * 12 * self.deflator
             
@@ -379,7 +379,7 @@ class WealthSimulation:
             self.stock_balance = sum(lot['value'] for lot in self.stock_lots)
             
             if shortfall > 0:
-                is_voluntary = is_privatier or (self.current_year_age >= self.state_ret_age and self.params['gkv_status'] != 'KVdR')
+                is_voluntary = is_privatier or (self.current_year_age > self.state_ret_age and self.params['gkv_status'] != 'KVdR')
                 
                 ordered_lots = []
                 for current_etf in range(self.params.get('etf_switches', 0), -1, -1):
@@ -480,7 +480,7 @@ class WealthSimulation:
 
     def _record_year(self, state_pension_gross: float, priv_payout_gross: float, stock_withdrawal: float, user_salary_gross: float, total_taxes: float, state_tax: float, priv_tax: float, salary_tax: float, stock_tax_withdrawal: float, stock_tax_vp: float, gkv_cost: float):
         """Appends the results of the simulated year to the records."""
-        partial_salary_gross = user_salary_gross / self.deflator if (self.do_partial_ret and self.current_year_age >= self.early_ret_age and self.current_year_age < self.final_ret_age) else 0.0
+        partial_salary_gross = user_salary_gross / self.deflator if (self.do_partial_ret and self.current_year_age > self.early_ret_age and self.current_year_age <= self.final_ret_age) else 0.0
         
         self.records.append({
             'Age': self.current_year_age,
@@ -488,7 +488,7 @@ class WealthSimulation:
             'Real Priv Pension Balance': max(0, self.priv_balance) / self.deflator,
             'State Pension (Gross)': state_pension_gross / self.deflator,
             'Priv Payout (Gross)': priv_payout_gross / self.deflator,
-            'Stock Withdrawal (Gross)': stock_withdrawal / self.deflator,
+            'Stock Withdrawal (Gross)': (stock_withdrawal + stock_tax_vp) / self.deflator,
             'Partial Salary (Gross)': partial_salary_gross,
             'Total Taxes & GKV': total_taxes / self.deflator,
             'State Tax': state_tax / self.deflator,

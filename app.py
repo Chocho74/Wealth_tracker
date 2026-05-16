@@ -120,7 +120,8 @@ def run_simulation():
             ui.label("Einkommensströme im Ruhestand (Brutto, Kaufkraftbereinigt)").classes('text-2xl font-bold mt-8')
             ui.label("Dieses Diagramm zeigt die Zusammensetzung Ihrer monatlichen Entnahmen und Renten (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.").classes('text-gray-600 dark:text-gray-400 mb-4')
             
-            df_payout = df[df['Alter'] >= state.early_retirement_age].copy()
+            df_payout = df[df['Alter'] > state.early_retirement_age].copy()
+            df_payout['Alter'] -= 1
             df_payout['Reale Gesetzliche Rente (Brutto)'] /= 12
             df_payout['Reale Private Auszahlung (Brutto)'] /= 12
             df_payout['Gehalt Altersteilzeit (Brutto)'] /= 12
@@ -138,7 +139,8 @@ def run_simulation():
             ui.label("Steuern & Abgaben im Ruhestand (Kaufkraftbereinigt)").classes('text-2xl font-bold mt-8')
             ui.label("Dieses Diagramm zeigt Ihre monatlichen Steuer- und Krankenkassenbelastungen (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.").classes('text-gray-600 dark:text-gray-400 mb-4')
             
-            df_taxes = df[df['Alter'] >= state.early_retirement_age].copy()
+            df_taxes = df[df['Alter'] > state.early_retirement_age].copy()
+            df_taxes['Alter'] -= 1
             df_taxes['Steuer auf ges. Rente'] /= 12
             df_taxes['Steuer auf priv. Rente'] /= 12
             df_taxes['Steuer auf Gehalt'] /= 12
