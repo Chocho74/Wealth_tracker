@@ -30,9 +30,6 @@ class AppState:
         self.kv_rate = 17.5
         self.pv_rate = 3.6
 
-state = AppState()
-results_container = None
-
 def parse_money(v):
     try: return float(str(v).replace('.', '').replace(',', '.'))
     except: return 0.0
@@ -41,144 +38,10 @@ def format_money(v):
     try: return str(int(float(v)))
     except: return ''
 
-def run_simulation():
-    global results_container
-    results_container.clear()
-    
-    final_retirement_age = state.early_retirement_age
-    if state.early_retirement_age < 67 and state.do_partial_retirement:
-        final_retirement_age = state.early_retirement_age + state.partial_duration
-        
-    params = {
-        'current_age': int(state.current_age), 'end_age': int(state.end_age), 'early_retirement_age': int(state.early_retirement_age), 
-        'salary': float(state.salary), 'partial_salary': float(state.partial_salary), 'target_net_income': float(state.target_net),
-        'do_partial_ret': bool(state.do_partial_retirement), 'final_ret_age': int(final_retirement_age),
-        'inflation': float(state.inflation), 'return_pre': float(state.return_pre), 'return_post': float(state.return_post), 'basiszinssatz': float(state.basiszinssatz),
-        'stock_initial': float(state.stock_initial), 'stock_monthly': float(state.stock_monthly), 'etf_switches': int(state.etf_switches),
-        'priv_initial': float(state.priv_initial), 'priv_monthly': float(state.priv_monthly),
-        'priv_fee_contrib': float(state.priv_fee_contrib), 'priv_fee_balance': float(state.priv_fee_balance),
-        'current_ep': float(state.current_ep),
-        'gkv_status': state.gkv_status_display, 
-        'kv_rate': float(state.kv_rate), 'pv_rate': float(state.pv_rate)
-    }
-    
-    with results_container:
-        ui.label("Ergebnisse werden berechnet...").classes('text-lg text-gray-500 dark:text-gray-400 italic')
-    
-    # Calculate
-    try:
-        df = simulate_wealth(params)
-        stock_flat, priv_flat = calculate_flat_savings_equivalent(params)
-        
-        # UI updates
-        results_container.clear()
-        with results_container:
-            ui.markdown(f"**💡 Info zur Inflationsanpassung:** Die Simulation geht davon aus, dass Sie Ihre monatlichen Sparraten jährlich um die Inflation ({state.inflation}%) erhöhen. Möchten Sie Ihre Sparrate stattdessen konstant halten, müssten Sie von Beginn an **{stock_flat:,.0f} € ins Depot** und **{priv_flat:,.0f} € in die private Rente** sparen, um exakt dasselbe nominale Endkapital zu Rentenbeginn zu erreichen.").classes('bg-blue-50 dark:bg-blue-900 p-4 rounded-lg shadow-inner text-blue-900 dark:text-blue-200 border border-blue-200 dark:border-blue-800 mb-6')
-            
-            # Translate dataframe columns
-            df = df.rename(columns={
-                'Age': 'Alter',
-                'Real Stock Balance': 'Realer Depotbestand',
-                'Real Priv Pension Balance': 'Reales privates Rentenguthaben',
-                'State Pension (Gross)': 'Reale Gesetzliche Rente (Brutto)',
-                'Priv Payout (Gross)': 'Reale Private Auszahlung (Brutto)',
-                'Stock Withdrawal (Gross)': 'Reale Depotentnahme (Brutto)',
-                'Partial Salary (Gross)': 'Gehalt Altersteilzeit (Brutto)',
-                'Total Taxes & GKV': 'Reale Steuern & GKV (Gesamt)',
-                'State Tax': 'Steuer auf ges. Rente',
-                'Priv Tax': 'Steuer auf priv. Rente',
-                'Stock Tax': 'Steuer auf Depotentnahme',
-                'Salary Tax': 'Steuer auf Gehalt',
-                'Vorabpauschale': 'Vorabpauschale (Depot)',
-                'GKV Cost': 'GKV & PV Beiträge',
-                'Rentenpunkte': 'Rentenpunkte (EP)'
-            })
-            
-            ui.label("Vermögensentwicklung & Entnahme (Kaufkraftbereinigt)").classes('text-2xl font-bold mt-8')
-            ui.label("Dieses Diagramm zeigt Ihr inflationsbereinigtes Kapital und stellt die tatsächliche heutige Kaufkraft Ihres Geldes dar.").classes('text-gray-600 dark:text-gray-400 mb-4')
-            
-            df_plot = df[['Alter', 'Realer Depotbestand', 'Reales privates Rentenguthaben']].copy()
-            
-            chart_font = dict(family='"Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif', size=14, color='gray')
-            title_font = dict(family='"Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif', size=22, color='gray')
-            
-            fig1 = px.area(df_plot, x='Alter', y=['Reales privates Rentenguthaben', 'Realer Depotbestand'], 
-                          title="<b>Kapitalprojektion (Kaufkraftbereinigt)</b>",
-                          labels={'value': '<b>Vermögen (€)</b>', 'variable': '<b>Säule</b>', 'Alter': '<b>Alter</b>'},
-                          color_discrete_sequence=['#1f77b4', '#2ca02c'])
-            
-            fig1.add_vline(x=state.early_retirement_age, line_dash="dash", line_color="purple", annotation_text=f"Alter {state.early_retirement_age} (Ende Vollzeit)", annotation_position="top left")
-            if state.early_retirement_age < 67 and state.do_partial_retirement:
-                 fig1.add_vline(x=final_retirement_age, line_dash="dash", line_color="magenta", annotation_text=f"Alter {final_retirement_age} (Ende Teilzeit)", annotation_position="top right")
-            fig1.add_vline(x=62, line_dash="dash", line_color="red", annotation_text="Alter 62 (Priv. Auszahlung)", annotation_position="bottom left")
-            fig1.add_vline(x=67, line_dash="dash", line_color="orange", annotation_text="Alter 67 (Gesetzl. Rente)", annotation_position="bottom right")
-            fig1.update_layout(margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
-            fig1.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
-            fig1.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
-            ui.plotly(fig1).classes('w-full h-[460px]')
-            
-            ui.label("Einkommensströme im Ruhestand (Brutto, Kaufkraftbereinigt)").classes('text-2xl font-bold mt-8')
-            ui.label("Dieses Diagramm zeigt die Zusammensetzung Ihrer monatlichen Entnahmen und Renten (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.").classes('text-gray-600 dark:text-gray-400 mb-4')
-            
-            df_payout = df[df['Alter'] > state.early_retirement_age].copy()
-            df_payout['Alter'] -= 1
-            df_payout['Reale Gesetzliche Rente (Brutto)'] /= 12
-            df_payout['Reale Private Auszahlung (Brutto)'] /= 12
-            df_payout['Gehalt Altersteilzeit (Brutto)'] /= 12
-            df_payout['Reale Depotentnahme (Brutto)'] /= 12
-            
-            fig2 = px.bar(df_payout, x='Alter', y=['Reale Gesetzliche Rente (Brutto)', 'Reale Private Auszahlung (Brutto)', 'Gehalt Altersteilzeit (Brutto)', 'Reale Depotentnahme (Brutto)'],
-                                title="<b>Monatliche Gesamtauszahlung (Kaufkraftbereinigt)</b>",
-                                labels={'value': '<b>Auszahlung (€/Monat)</b>', 'variable': '<b>Einkommensquelle</b>', 'Alter': '<b>Alter</b>'},
-                                color_discrete_sequence=['#ff7f0e', '#1f77b4', '#8c564b', '#2ca02c'])
-            fig2.update_layout(margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
-            fig2.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
-            fig2.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
-            ui.plotly(fig2).classes('w-full h-[460px]')
-
-            ui.label("Steuern & Abgaben im Ruhestand (Kaufkraftbereinigt)").classes('text-2xl font-bold mt-8')
-            ui.label("Dieses Diagramm zeigt Ihre monatlichen Steuer- und Krankenkassenbelastungen (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.").classes('text-gray-600 dark:text-gray-400 mb-4')
-            
-            df_taxes = df[df['Alter'] > state.early_retirement_age].copy()
-            df_taxes['Alter'] -= 1
-            df_taxes['Steuer auf ges. Rente'] /= 12
-            df_taxes['Steuer auf priv. Rente'] /= 12
-            df_taxes['Steuer auf Gehalt'] /= 12
-            df_taxes['Steuer auf Depotentnahme'] /= 12
-            df_taxes['Vorabpauschale (Depot)'] /= 12
-            df_taxes['GKV & PV Beiträge'] /= 12
-            
-            fig3 = px.bar(df_taxes, x='Alter', y=['Steuer auf ges. Rente', 'Steuer auf priv. Rente', 'Steuer auf Gehalt', 'Steuer auf Depotentnahme', 'Vorabpauschale (Depot)', 'GKV & PV Beiträge'],
-                                title="<b>Monatliche Steuern & Abgaben (Kaufkraftbereinigt)</b>",
-                                labels={'value': '<b>Abgaben (€/Monat)</b>', 'variable': '<b>Abgabenart</b>', 'Alter': '<b>Alter</b>'},
-                                color_discrete_sequence=['#d62728', '#9467bd', '#1f77b4', '#8c564b', '#17becf', '#e377c2'])
-            fig3.update_layout(margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
-            fig3.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
-            fig3.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
-            ui.plotly(fig3).classes('w-full h-[460px]')
-            
-            ui.label("Detaillierte jährliche Projektion").classes('text-2xl font-bold mt-8 mb-4')
-            
-            # format df for display
-            df_display = df.round(0).copy()
-            
-            column_defs = [{'field': col, 'headerName': col, 'sortable': True, 'filter': True} for col in df_display.columns]
-            ui.aggrid({
-                'columnDefs': column_defs,
-                'rowData': df_display.to_dict('records')
-            }).classes('w-full h-96')
-            
-        # Optional: Auto-scroll to results after calculation
-        ui.run_javascript(f'document.getElementById("c{results_container.id}").scrollIntoView({{behavior: "smooth"}})')
-
-    except Exception as e:
-        results_container.clear()
-        with results_container:
-            ui.label(f"Fehler bei der Berechnung: {str(e)}").classes('text-red-500 dark:text-red-400 font-bold p-4')
-
 @ui.page('/')
 def main_page():
-    global results_container
+    state = AppState()
+    
     ui.page_title("Deutscher Rentenplaner")
     
     # Header
@@ -235,7 +98,7 @@ def main_page():
                     except Exception as ex:
                         ui.notify(f"Fehler beim Laden: {ex}", type='negative')
                 
-                ui.upload(on_upload=handle_upload, label="Laden (.json)", auto_upload=True).props('accept=.json max-files=1').classes('w-48')
+                ui.upload(on_upload=handle_upload, label="Laden (.json)", auto_upload=True).props('accept=.json max-files=1 max-file-size=51200').classes('w-48')
             
             def download_params():
                 data = json.dumps(state.__dict__, indent=4)
@@ -281,6 +144,140 @@ def main_page():
                 ui.select(["KVdR", "Freiwillig"], label="GKV-Status").bind_value(state, 'gkv_status_display').classes('w-full mb-1')
                 ui.number("GKV-Beitragssatz + Zusatz (%)", step=0.1).bind_value(state, 'kv_rate').classes('w-full mb-1')
                 ui.number("PV-Beitragssatz (%)", step=0.1).bind_value(state, 'pv_rate').classes('w-full')
+
+        def run_simulation():
+            results_container.clear()
+            
+            final_retirement_age = state.early_retirement_age
+            if state.early_retirement_age < 67 and state.do_partial_retirement:
+                final_retirement_age = state.early_retirement_age + state.partial_duration
+                
+            params = {
+                'current_age': int(state.current_age), 'end_age': int(state.end_age), 'early_retirement_age': int(state.early_retirement_age), 
+                'salary': float(state.salary), 'partial_salary': float(state.partial_salary), 'target_net_income': float(state.target_net),
+                'do_partial_ret': bool(state.do_partial_retirement), 'final_ret_age': int(final_retirement_age),
+                'inflation': float(state.inflation), 'return_pre': float(state.return_pre), 'return_post': float(state.return_post), 'basiszinssatz': float(state.basiszinssatz),
+                'stock_initial': float(state.stock_initial), 'stock_monthly': float(state.stock_monthly), 'etf_switches': int(state.etf_switches),
+                'priv_initial': float(state.priv_initial), 'priv_monthly': float(state.priv_monthly),
+                'priv_fee_contrib': float(state.priv_fee_contrib), 'priv_fee_balance': float(state.priv_fee_balance),
+                'current_ep': float(state.current_ep),
+                'gkv_status': state.gkv_status_display, 
+                'kv_rate': float(state.kv_rate), 'pv_rate': float(state.pv_rate)
+            }
+            
+            with results_container:
+                ui.label("Ergebnisse werden berechnet...").classes('text-lg text-gray-500 dark:text-gray-400 italic')
+            
+            # Calculate
+            try:
+                df = simulate_wealth(params)
+                stock_flat, priv_flat = calculate_flat_savings_equivalent(params)
+                
+                # UI updates
+                results_container.clear()
+                with results_container:
+                    ui.markdown(f"**💡 Info zur Inflationsanpassung:** Die Simulation geht davon aus, dass Sie Ihre monatlichen Sparraten jährlich um die Inflation ({state.inflation}%) erhöhen. Möchten Sie Ihre Sparrate stattdessen konstant halten, müssten Sie von Beginn an **{stock_flat:,.0f} € ins Depot** und **{priv_flat:,.0f} € in die private Rente** sparen, um exakt dasselbe nominale Endkapital zu Rentenbeginn zu erreichen.").classes('bg-blue-50 dark:bg-blue-900 p-4 rounded-lg shadow-inner text-blue-900 dark:text-blue-200 border border-blue-200 dark:border-blue-800 mb-6')
+                    
+                    # Translate dataframe columns
+                    df = df.rename(columns={
+                        'Age': 'Alter',
+                        'Real Stock Balance': 'Realer Depotbestand',
+                        'Real Priv Pension Balance': 'Reales privates Rentenguthaben',
+                        'State Pension (Gross)': 'Reale Gesetzliche Rente (Brutto)',
+                        'Priv Payout (Gross)': 'Reale Private Auszahlung (Brutto)',
+                        'Stock Withdrawal (Gross)': 'Reale Depotentnahme (Brutto)',
+                        'Partial Salary (Gross)': 'Gehalt Altersteilzeit (Brutto)',
+                        'Total Taxes & GKV': 'Reale Steuern & GKV (Gesamt)',
+                        'State Tax': 'Steuer auf ges. Rente',
+                        'Priv Tax': 'Steuer auf priv. Rente',
+                        'Stock Tax': 'Steuer auf Depotentnahme',
+                        'Salary Tax': 'Steuer auf Gehalt',
+                        'Vorabpauschale': 'Vorabpauschale (Depot)',
+                        'GKV Cost': 'GKV & PV Beiträge',
+                        'Rentenpunkte': 'Rentenpunkte (EP)'
+                    })
+                    
+                    ui.label("Vermögensentwicklung & Entnahme (Kaufkraftbereinigt)").classes('text-2xl font-bold mt-8')
+                    ui.label("Dieses Diagramm zeigt Ihr inflationsbereinigtes Kapital und stellt die tatsächliche heutige Kaufkraft Ihres Geldes dar.").classes('text-gray-600 dark:text-gray-400 mb-4')
+                    
+                    df_plot = df[['Alter', 'Realer Depotbestand', 'Reales privates Rentenguthaben']].copy()
+                    
+                    chart_font = dict(family='"Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif', size=14, color='gray')
+                    title_font = dict(family='"Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif', size=22, color='gray')
+                    
+                    fig1 = px.area(df_plot, x='Alter', y=['Reales privates Rentenguthaben', 'Realer Depotbestand'], 
+                                  title="<b>Kapitalprojektion (Kaufkraftbereinigt)</b>",
+                                  labels={'value': '<b>Vermögen (€)</b>', 'variable': '<b>Säule</b>', 'Alter': '<b>Alter</b>'},
+                                  color_discrete_sequence=['#1f77b4', '#2ca02c'])
+                    
+                    fig1.add_vline(x=state.early_retirement_age, line_dash="dash", line_color="purple", annotation_text=f"Alter {state.early_retirement_age} (Ende Vollzeit)", annotation_position="top left")
+                    if state.early_retirement_age < 67 and state.do_partial_retirement:
+                         fig1.add_vline(x=final_retirement_age, line_dash="dash", line_color="magenta", annotation_text=f"Alter {final_retirement_age} (Ende Teilzeit)", annotation_position="top right")
+                    fig1.add_vline(x=62, line_dash="dash", line_color="red", annotation_text="Alter 62 (Priv. Auszahlung)", annotation_position="bottom left")
+                    fig1.add_vline(x=67, line_dash="dash", line_color="orange", annotation_text="Alter 67 (Gesetzl. Rente)", annotation_position="bottom right")
+                    fig1.update_layout(margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
+                    fig1.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
+                    fig1.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
+                    ui.plotly(fig1).classes('w-full h-[460px]')
+                    
+                    ui.label("Einkommensströme im Ruhestand (Brutto, Kaufkraftbereinigt)").classes('text-2xl font-bold mt-8')
+                    ui.label("Dieses Diagramm zeigt die Zusammensetzung Ihrer monatlichen Entnahmen und Renten (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.").classes('text-gray-600 dark:text-gray-400 mb-4')
+                    
+                    df_payout = df[df['Alter'] > state.early_retirement_age].copy()
+                    df_payout['Alter'] -= 1
+                    df_payout['Reale Gesetzliche Rente (Brutto)'] /= 12
+                    df_payout['Reale Private Auszahlung (Brutto)'] /= 12
+                    df_payout['Gehalt Altersteilzeit (Brutto)'] /= 12
+                    df_payout['Reale Depotentnahme (Brutto)'] /= 12
+                    
+                    fig2 = px.bar(df_payout, x='Alter', y=['Reale Gesetzliche Rente (Brutto)', 'Reale Private Auszahlung (Brutto)', 'Gehalt Altersteilzeit (Brutto)', 'Reale Depotentnahme (Brutto)'],
+                                        title="<b>Monatliche Gesamtauszahlung (Kaufkraftbereinigt)</b>",
+                                        labels={'value': '<b>Auszahlung (€/Monat)</b>', 'variable': '<b>Einkommensquelle</b>', 'Alter': '<b>Alter</b>'},
+                                        color_discrete_sequence=['#ff7f0e', '#1f77b4', '#8c564b', '#2ca02c'])
+                    fig2.update_layout(margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
+                    fig2.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
+                    fig2.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
+                    ui.plotly(fig2).classes('w-full h-[460px]')
+        
+                    ui.label("Steuern & Abgaben im Ruhestand (Kaufkraftbereinigt)").classes('text-2xl font-bold mt-8')
+                    ui.label("Dieses Diagramm zeigt Ihre monatlichen Steuer- und Krankenkassenbelastungen (Durchschnitt pro Jahr) ab Beginn der Auszahlungsphase in heutiger Kaufkraft.").classes('text-gray-600 dark:text-gray-400 mb-4')
+                    
+                    df_taxes = df[df['Alter'] > state.early_retirement_age].copy()
+                    df_taxes['Alter'] -= 1
+                    df_taxes['Steuer auf ges. Rente'] /= 12
+                    df_taxes['Steuer auf priv. Rente'] /= 12
+                    df_taxes['Steuer auf Gehalt'] /= 12
+                    df_taxes['Steuer auf Depotentnahme'] /= 12
+                    df_taxes['Vorabpauschale (Depot)'] /= 12
+                    df_taxes['GKV & PV Beiträge'] /= 12
+                    
+                    fig3 = px.bar(df_taxes, x='Alter', y=['Steuer auf ges. Rente', 'Steuer auf priv. Rente', 'Steuer auf Gehalt', 'Steuer auf Depotentnahme', 'Vorabpauschale (Depot)', 'GKV & PV Beiträge'],
+                                        title="<b>Monatliche Steuern & Abgaben (Kaufkraftbereinigt)</b>",
+                                        labels={'value': '<b>Abgaben (€/Monat)</b>', 'variable': '<b>Abgabenart</b>', 'Alter': '<b>Alter</b>'},
+                                        color_discrete_sequence=['#d62728', '#9467bd', '#1f77b4', '#8c564b', '#17becf', '#e377c2'])
+                    fig3.update_layout(margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
+                    fig3.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
+                    fig3.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
+                    ui.plotly(fig3).classes('w-full h-[460px]')
+                    
+                    ui.label("Detaillierte jährliche Projektion").classes('text-2xl font-bold mt-8 mb-4')
+                    
+                    # format df for display
+                    df_display = df.round(0).copy()
+                    
+                    column_defs = [{'field': col, 'headerName': col, 'sortable': True, 'filter': True} for col in df_display.columns]
+                    ui.aggrid({
+                        'columnDefs': column_defs,
+                        'rowData': df_display.to_dict('records')
+                    }).classes('w-full h-96')
+                    
+                # Optional: Auto-scroll to results after calculation
+                ui.run_javascript(f'document.getElementById("c{results_container.id}").scrollIntoView({{behavior: "smooth"}})')
+        
+            except Exception as e:
+                results_container.clear()
+                with results_container:
+                    ui.label(f"Fehler bei der Berechnung: {str(e)}").classes('text-red-500 dark:text-red-400 font-bold p-4')
 
         ui.button("🚀 Simulation starten", on_click=run_simulation, color='primary').classes('w-full mt-6 py-4 text-xl font-bold shadow-lg')
 
