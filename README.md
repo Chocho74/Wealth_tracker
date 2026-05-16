@@ -1,3 +1,12 @@
+---
+title: Deutscher Rentenplaner
+emoji: 📈
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 # Deutscher Rentenplaner (Wealth Tracker)
 
 Ein interaktives Python-Tool (mit NiceGUI) zur ganzheitlichen Projektion und Planung der Altersvorsorge in Deutschland. Die Simulation basiert auf den steuerlichen und rechtlichen Rahmenbedingungen für das Jahr 2026.
