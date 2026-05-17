@@ -81,10 +81,20 @@ def main_page():
                 .q-field__control { min-height: 50px !important; }
                 .q-field--labeled .q-field__native { padding-top: 24px !important; padding-bottom: 4px !important; }
                 .q-field--float .q-field__label { transform: translateY(-50%) scale(0.8) !important; }
-                .mobile-chart-wrapper { zoom: 0.45; }
+                .mobile-chart-wrapper {
+                    width: 222%;
+                    transform: scale(0.45);
+                    transform-origin: top left;
+                    height: 207px; /* 460px * 0.45 */
+                }
             }
             @media (min-width: 769px) and (max-width: 1024px) {
-                .mobile-chart-wrapper { zoom: 0.65; }
+                .mobile-chart-wrapper {
+                    width: 153%;
+                    transform: scale(0.65);
+                    transform-origin: top left;
+                    height: 299px; /* 460px * 0.65 */
+                }
             }
         </style>''')
 
