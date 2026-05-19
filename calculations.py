@@ -294,7 +294,7 @@ class WealthSimulation:
 
     def _calc_income_taxes(self, user_salary_gross: float, state_pension_gross: float, taxable_gain: float, gkv_cost: float) -> Tuple[float, float, float, float]:
         """Calculates income taxes, distributing them proportionally among sources."""
-        salary_gkv_deduction = user_salary_gross * 0.10 if user_salary_gross > 0 else 0.0
+        salary_gkv_deduction = user_salary_gross * 0.21 if user_salary_gross > 0 else 0.0
         
         nominal_taxable_income_total = max(0, user_salary_gross + state_pension_gross + taxable_gain - gkv_cost - salary_gkv_deduction)
         real_taxable_income_total = nominal_taxable_income_total / self.deflator
@@ -318,7 +318,7 @@ class WealthSimulation:
         target_phase_started = self.current_year_age > min(self.early_ret_age, self.priv_payout_age)
         shortfall = 0.0
         if target_phase_started:
-            net_income_so_far = max(0, user_salary_gross + state_pension_gross + priv_payout_gross - salary_tax - state_tax - priv_tax - salary_gkv_deduction - gkv_cost)
+            net_income_so_far = user_salary_gross + state_pension_gross + priv_payout_gross - salary_tax - state_tax - priv_tax - salary_gkv_deduction - gkv_cost
             target_net_nominal = (self.params['target_net_income'] * 12) * self.deflator
             shortfall = max(0, target_net_nominal - net_income_so_far)
         return shortfall

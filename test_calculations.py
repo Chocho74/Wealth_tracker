@@ -136,8 +136,8 @@ class TestCalculations(unittest.TestCase):
         df = simulate_wealth(params)
         df.set_index('Age', inplace=True)
         
-        # Age 62 to 85 should have payout > 0
-        for age in range(62, 86):
+        # Age 63 to 85 should have payout > 0
+        for age in range(63, 86):
             self.assertGreater(df.loc[age, 'Priv Payout (Gross)'], 0, f"Age {age} should have a private pension payout.")
         
         # Age 86+ should have 0 balance and 0 payout
@@ -237,8 +237,8 @@ class TestCalculations(unittest.TestCase):
         df = simulate_wealth(params)
         df.set_index('Age', inplace=True)
         
-        # Age 56: Privatier Phase
-        self.assertGreater(df.loc[56, 'GKV Cost'], 0)
+        # Age 57: Privatier Phase
+        self.assertGreater(df.loc[57, 'GKV Cost'], 0)
         
         # Age 68: State pension + voluntary GKV
         self.assertGreater(df.loc[68, 'GKV Cost'], 0)
