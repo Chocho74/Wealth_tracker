@@ -82,6 +82,11 @@ class WealthSimulation:
         
         self.ep = params['current_ep']
         
+        self.bav_payout_monthly = params.get('bav_payout', 0.0)
+        self.bav_start_age = params.get('bav_start_age', 67)
+        self.bav_entgelt_yearly = params.get('bav_entgelt', 0.0) * 12
+        self.bav_inflation_adjusted = params.get('bav_inflation_adjusted', False)
+        
         self.priv_stop_age = 50
         self.priv_payout_age = 62
         self.priv_payout_end_age = 85
@@ -108,11 +113,13 @@ class WealthSimulation:
             'Real Stock Balance': self.stock_balance,
             'Real Priv Pension Balance': self.priv_balance,
             'State Pension (Gross)': 0.0,
+            'bAV Payout (Gross)': 0.0,
             'Priv Payout (Gross)': 0.0,
             'Stock Withdrawal (Gross)': 0.0,
             'Partial Salary (Gross)': 0.0,
             'Total Taxes & GKV': 0.0,
             'State Tax': 0.0,
+            'bAV Tax': 0.0,
             'Priv Tax': 0.0,
             'Salary Tax': 0.0,
             'Stock Tax': 0.0,
@@ -129,18 +136,19 @@ class WealthSimulation:
         
         user_salary_gross, state_pension_gross = self._calc_state_pension_and_salary()
         priv_payout_gross, taxable_gain = self._calc_private_pension()
+        bav_payout_gross = self._calc_bav_pension()
         
         gkv_cost, base_income_for_gkv, min_gkv_income, is_privatier = self._calc_gkv(
-            user_salary_gross, state_pension_gross, priv_payout_gross
+            user_salary_gross, state_pension_gross, priv_payout_gross, bav_payout_gross
         )
         
-        salary_tax, state_tax, priv_tax, salary_gkv_deduction = self._calc_income_taxes(
-            user_salary_gross, state_pension_gross, taxable_gain, gkv_cost
+        salary_tax, state_tax, priv_tax, bav_tax, salary_gkv_deduction = self._calc_income_taxes(
+            user_salary_gross, state_pension_gross, taxable_gain, bav_payout_gross, gkv_cost
         )
         
         shortfall = self._calc_shortfall(
-            user_salary_gross, state_pension_gross, priv_payout_gross,
-            salary_tax, state_tax, priv_tax, salary_gkv_deduction, gkv_cost
+            user_salary_gross, state_pension_gross, priv_payout_gross, bav_payout_gross,
+            salary_tax, state_tax, priv_tax, bav_tax, salary_gkv_deduction, gkv_cost
         )
         
         stock_withdrawal, stock_tax_vp, stock_tax_withdrawal, additional_gkv = self._calc_stock_market(
@@ -148,11 +156,11 @@ class WealthSimulation:
         )
         
         gkv_cost += additional_gkv + salary_gkv_deduction
-        total_taxes = salary_tax + state_tax + priv_tax + stock_tax_withdrawal + stock_tax_vp + gkv_cost
+        total_taxes = salary_tax + state_tax + priv_tax + bav_tax + stock_tax_withdrawal + stock_tax_vp + gkv_cost
         
         self._record_year(
-            state_pension_gross, priv_payout_gross, stock_withdrawal, user_salary_gross,
-            total_taxes, state_tax, priv_tax, salary_tax, stock_tax_withdrawal, stock_tax_vp, gkv_cost
+            state_pension_gross, priv_payout_gross, bav_payout_gross, stock_withdrawal, user_salary_gross,
+            total_taxes, state_tax, priv_tax, bav_tax, salary_tax, stock_tax_withdrawal, stock_tax_vp, gkv_cost
         )
 
     def _calc_state_pension_and_salary(self) -> Tuple[float, float]:
@@ -162,15 +170,27 @@ class WealthSimulation:
         
         if self.current_year_age <= self.early_ret_age:
             user_salary_gross = self.params['salary'] * self.deflator
-            self.ep += min(user_salary_gross / self.deflator, 101400) / 51944.0
+            salary_for_ep = max(0, (user_salary_gross / self.deflator) - self.bav_entgelt_yearly)
+            self.ep += min(salary_for_ep, 101400) / 51944.0
         elif self.do_partial_ret and self.current_year_age > self.early_ret_age and self.current_year_age <= self.final_ret_age:
             user_salary_gross = self.partial_salary * self.deflator
-            self.ep += min(user_salary_gross / self.deflator, 101400) / 51944.0
+            salary_for_ep = max(0, (user_salary_gross / self.deflator) - self.bav_entgelt_yearly)
+            self.ep += min(salary_for_ep, 101400) / 51944.0
 
         if self.current_year_age > self.state_ret_age:
             state_pension_gross = self.ep * 42.52 * 12 * self.deflator
             
         return user_salary_gross, state_pension_gross
+
+    def _calc_bav_pension(self) -> float:
+        """Calculates the gross payout from Betriebsrente."""
+        if self.current_year_age > self.bav_start_age:
+            payout_yearly = self.bav_payout_monthly * 12
+            if self.bav_inflation_adjusted:
+                return payout_yearly * self.deflator
+            else:
+                return payout_yearly
+        return 0.0
 
     def _calc_private_pension(self) -> Tuple[float, float]:
         """Calculates private pension growth, payout, and taxable gain."""
@@ -259,7 +279,7 @@ class WealthSimulation:
             
         return priv_payout_gross, taxable_gain
 
-    def _calc_gkv(self, user_salary_gross: float, state_pension_gross: float, priv_payout_gross: float) -> Tuple[float, float, float, bool]:
+    def _calc_gkv(self, user_salary_gross: float, state_pension_gross: float, priv_payout_gross: float, bav_payout_gross: float) -> Tuple[float, float, float, bool]:
         """Calculates health insurance (GKV) costs and related base incomes."""
         gkv_cost = 0.0
         gkv_rate = (self.params['kv_rate'] + self.params['pv_rate']) / 100.0
@@ -268,6 +288,7 @@ class WealthSimulation:
         
         bbg_gkv = 69750 * self.deflator
         min_gkv_income = 14140 * self.deflator 
+        freibetrag_yearly = 185.0 * 12 * self.deflator
         
         is_employed = (self.current_year_age <= self.early_ret_age) or (self.do_partial_ret and self.current_year_age <= self.final_ret_age)
         is_privatier = (not is_employed) and (self.current_year_age <= self.state_ret_age)
@@ -278,47 +299,50 @@ class WealthSimulation:
         if self.current_year_age > self.state_ret_age:
             if self.params['gkv_status'] == 'KVdR':
                 gkv_cost = state_pension_gross * (kvdr_kv_rate + kvdr_pv_rate)
+                if bav_payout_gross > 0:
+                    bav_gkv_base = max(0, bav_payout_gross - freibetrag_yearly)
+                    bav_pv_base = bav_payout_gross if bav_payout_gross > freibetrag_yearly else 0
+                    gkv_cost += (bav_gkv_base * (self.params['kv_rate'] / 100.0)) + (bav_pv_base * kvdr_pv_rate)
             else:
-                # In voluntary mode, all income (state pension, private pension, stock gains)
-                # is subject to the full GKV rate up to the BBG.
-                # Stock gains from withdrawals are added later in _calc_stock_market.
-                base_income_for_gkv = state_pension_gross + priv_payout_gross 
+                base_income_for_gkv = state_pension_gross + priv_payout_gross + bav_payout_gross
                 current_assessed_income_for_gkv = max(base_income_for_gkv, min_gkv_income)
                 gkv_cost = min(current_assessed_income_for_gkv, bbg_gkv) * gkv_rate
         elif is_privatier:
-            base_income_for_gkv = priv_payout_gross
+            base_income_for_gkv = priv_payout_gross + bav_payout_gross
             current_assessed_income_for_gkv = max(base_income_for_gkv, min_gkv_income)
             gkv_cost = min(current_assessed_income_for_gkv, bbg_gkv) * gkv_rate
                 
         return gkv_cost, base_income_for_gkv, min_gkv_income, is_privatier
 
-    def _calc_income_taxes(self, user_salary_gross: float, state_pension_gross: float, taxable_gain: float, gkv_cost: float) -> Tuple[float, float, float, float]:
+    def _calc_income_taxes(self, user_salary_gross: float, state_pension_gross: float, taxable_gain: float, bav_payout_gross: float, gkv_cost: float) -> Tuple[float, float, float, float, float]:
         """Calculates income taxes, distributing them proportionally among sources."""
         salary_gkv_deduction = user_salary_gross * 0.21 if user_salary_gross > 0 else 0.0
         
-        nominal_taxable_income_total = max(0, user_salary_gross + state_pension_gross + taxable_gain - gkv_cost - salary_gkv_deduction)
+        nominal_taxable_income_total = max(0, user_salary_gross + state_pension_gross + taxable_gain + bav_payout_gross - gkv_cost - salary_gkv_deduction)
         real_taxable_income_total = nominal_taxable_income_total / self.deflator
         real_tax_total = calc_income_tax_2026(real_taxable_income_total)
         total_nominal_income_tax = real_tax_total * self.deflator
 
-        total_taxable_before_deductions = user_salary_gross + state_pension_gross + taxable_gain
+        total_taxable_before_deductions = user_salary_gross + state_pension_gross + taxable_gain + bav_payout_gross
         if total_taxable_before_deductions > 0:
             salary_tax = total_nominal_income_tax * (user_salary_gross / total_taxable_before_deductions)
             state_tax = total_nominal_income_tax * (state_pension_gross / total_taxable_before_deductions)
             priv_tax = total_nominal_income_tax * (taxable_gain / total_taxable_before_deductions)
+            bav_tax = total_nominal_income_tax * (bav_payout_gross / total_taxable_before_deductions)
         else:
             salary_tax = 0.0
             state_tax = 0.0
             priv_tax = 0.0
+            bav_tax = 0.0
             
-        return salary_tax, state_tax, priv_tax, salary_gkv_deduction
+        return salary_tax, state_tax, priv_tax, bav_tax, salary_gkv_deduction
 
-    def _calc_shortfall(self, user_salary_gross: float, state_pension_gross: float, priv_payout_gross: float, salary_tax: float, state_tax: float, priv_tax: float, salary_gkv_deduction: float, gkv_cost: float) -> float:
+    def _calc_shortfall(self, user_salary_gross: float, state_pension_gross: float, priv_payout_gross: float, bav_payout_gross: float, salary_tax: float, state_tax: float, priv_tax: float, bav_tax: float, salary_gkv_deduction: float, gkv_cost: float) -> float:
         """Determines the gap between required net income and the net income realized so far."""
         target_phase_started = self.current_year_age > min(self.early_ret_age, self.priv_payout_age)
         shortfall = 0.0
         if target_phase_started:
-            net_income_so_far = user_salary_gross + state_pension_gross + priv_payout_gross - salary_tax - state_tax - priv_tax - salary_gkv_deduction - gkv_cost
+            net_income_so_far = user_salary_gross + state_pension_gross + priv_payout_gross + bav_payout_gross - salary_tax - state_tax - priv_tax - bav_tax - salary_gkv_deduction - gkv_cost
             target_net_nominal = (self.params['target_net_income'] * 12) * self.deflator
             shortfall = max(0, target_net_nominal - net_income_so_far)
         return shortfall
@@ -478,7 +502,7 @@ class WealthSimulation:
             
         return best_gross
 
-    def _record_year(self, state_pension_gross: float, priv_payout_gross: float, stock_withdrawal: float, user_salary_gross: float, total_taxes: float, state_tax: float, priv_tax: float, salary_tax: float, stock_tax_withdrawal: float, stock_tax_vp: float, gkv_cost: float):
+    def _record_year(self, state_pension_gross: float, priv_payout_gross: float, bav_payout_gross: float, stock_withdrawal: float, user_salary_gross: float, total_taxes: float, state_tax: float, priv_tax: float, bav_tax: float, salary_tax: float, stock_tax_withdrawal: float, stock_tax_vp: float, gkv_cost: float):
         """Appends the results of the simulated year to the records."""
         partial_salary_gross = user_salary_gross / self.deflator if (self.do_partial_ret and self.current_year_age > self.early_ret_age and self.current_year_age <= self.final_ret_age) else 0.0
         
@@ -487,11 +511,13 @@ class WealthSimulation:
             'Real Stock Balance': max(0, self.stock_balance) / self.deflator,
             'Real Priv Pension Balance': max(0, self.priv_balance) / self.deflator,
             'State Pension (Gross)': state_pension_gross / self.deflator,
+            'bAV Payout (Gross)': bav_payout_gross / self.deflator,
             'Priv Payout (Gross)': priv_payout_gross / self.deflator,
             'Stock Withdrawal (Gross)': (stock_withdrawal + stock_tax_vp) / self.deflator,
             'Partial Salary (Gross)': partial_salary_gross,
             'Total Taxes & GKV': total_taxes / self.deflator,
             'State Tax': state_tax / self.deflator,
+            'bAV Tax': bav_tax / self.deflator,
             'Priv Tax': priv_tax / self.deflator,
             'Salary Tax': salary_tax / self.deflator,
             'Stock Tax': stock_tax_withdrawal / self.deflator,

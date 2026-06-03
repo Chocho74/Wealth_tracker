@@ -25,6 +25,10 @@ class AppState:
         self.priv_monthly = 200
         self.priv_fee_contrib = 0.50
         self.priv_fee_balance = 0.22
+        self.bav_payout = 0.0
+        self.bav_start_age = 67
+        self.bav_entgelt = 0.0
+        self.bav_inflation_adjusted = False
         self.current_ep = 10.0
         self.gkv_status_display = "KVdR"
         self.kv_rate = 17.5
@@ -162,7 +166,22 @@ def main_page():
             with ui.expansion('5. Gesetzliche Rente', icon='account_balance').classes('w-full bg-gray-100 dark:bg-gray-800 shadow-md rounded-md text-black dark:text-white').props('default-opened header-class="bg-gray-200 dark:bg-gray-900 text-base md:text-lg font-bold text-blue-900 dark:text-blue-100"'):
                 ui.number("Aktuelle Rentenpunkte (EP)", step=1.0).bind_value(state, 'current_ep').classes('w-full')
 
-            with ui.expansion('6. Krankenversicherung', icon='local_hospital').classes('w-full bg-gray-100 dark:bg-gray-800 shadow-md rounded-md text-black dark:text-white').props('default-opened header-class="bg-gray-200 dark:bg-gray-900 text-base md:text-lg font-bold text-blue-900 dark:text-blue-100"'):
+            with ui.expansion('6. Betriebsrente & VBL (bAV)', icon='business_center').classes('w-full bg-gray-100 dark:bg-gray-800 shadow-md rounded-md text-black dark:text-white').props('default-opened header-class="bg-gray-200 dark:bg-gray-900 text-base md:text-lg font-bold text-blue-900 dark:text-blue-100"'):
+                ui.input("Erwartete Bruttorente (€/Monat)").bind_value(state, 'bav_payout', forward=parse_money, backward=format_money).props('mask="#.###.###" reverse-fill-mask unmasked-value').classes('w-full')
+                ui.label("Tragen Sie hier die voraussichtliche Betriebsrente aus Ihrer jährlichen Standmitteilung ein.").classes('text-xs text-gray-500 dark:text-gray-400 italic mb-3')
+                
+                ui.number("Rentenbeginn (Alter)", min=60, max=70, step=1).bind_value(state, 'bav_start_age').classes('w-full')
+                ui.label("Ab welchem Alter wird die bAV ausgezahlt? (Oft 62, 65 oder 67)").classes('text-xs text-gray-500 dark:text-gray-400 italic mb-3')
+                
+                ui.input("Aktuelle Entgeltumwandlung (€/Monat)").bind_value(state, 'bav_entgelt', forward=parse_money, backward=format_money).props('mask="#.###.###" reverse-fill-mask unmasked-value').classes('w-full')
+                ui.label("Teil Ihres Bruttogehalts, auf den Sie aktuell verzichten, um die bAV zu besparen. (Reduziert gesetzliche Rentenpunkte!)").classes('text-xs text-gray-500 dark:text-gray-400 italic mb-3')
+                
+                ui.checkbox("Rente wächst mit der Inflation?").bind_value(state, 'bav_inflation_adjusted').classes('w-full dark:text-white')
+                ui.label("Nur anhaken, wenn die vertragliche Rente garantiert um die Inflation steigt. Meistens nicht der Fall!").classes('text-xs text-gray-500 dark:text-gray-400 italic mb-3')
+                
+                ui.label("ℹ️ Die Auszahlung wird im Tool voll versteuert (nachgelagerte Besteuerung) und mit GKV/PV belastet.").classes('text-xs text-blue-600 dark:text-blue-400 font-bold mt-1')
+
+            with ui.expansion('7. Krankenversicherung', icon='local_hospital').classes('w-full bg-gray-100 dark:bg-gray-800 shadow-md rounded-md text-black dark:text-white').props('default-opened header-class="bg-gray-200 dark:bg-gray-900 text-base md:text-lg font-bold text-blue-900 dark:text-blue-100"'):
                 ui.select(["KVdR", "Freiwillig"], label="GKV-Status").bind_value(state, 'gkv_status_display').classes('w-full mb-1')
                 ui.number("GKV-Beitragssatz + Zusatz (%)", step=0.1).bind_value(state, 'kv_rate').classes('w-full mb-1')
                 ui.number("PV-Beitragssatz (%)", step=0.1).bind_value(state, 'pv_rate').classes('w-full')
@@ -182,6 +201,8 @@ def main_page():
                 'stock_initial': float(state.stock_initial), 'stock_monthly': float(state.stock_monthly), 'etf_switches': int(state.etf_switches),
                 'priv_initial': float(state.priv_initial), 'priv_monthly': float(state.priv_monthly),
                 'priv_fee_contrib': float(state.priv_fee_contrib), 'priv_fee_balance': float(state.priv_fee_balance),
+                'bav_payout': float(state.bav_payout), 'bav_start_age': int(state.bav_start_age),
+                'bav_entgelt': float(state.bav_entgelt), 'bav_inflation_adjusted': bool(state.bav_inflation_adjusted),
                 'current_ep': float(state.current_ep),
                 'gkv_status': state.gkv_status_display, 
                 'kv_rate': float(state.kv_rate), 'pv_rate': float(state.pv_rate)
@@ -206,11 +227,13 @@ def main_page():
                         'Real Stock Balance': 'Realer Depotbestand',
                         'Real Priv Pension Balance': 'Reales privates Rentenguthaben',
                         'State Pension (Gross)': 'Reale Gesetzliche Rente (Brutto)',
+                        'bAV Payout (Gross)': 'Reale Betriebsrente (Brutto)',
                         'Priv Payout (Gross)': 'Reale Private Auszahlung (Brutto)',
                         'Stock Withdrawal (Gross)': 'Reale Depotentnahme (Brutto)',
                         'Partial Salary (Gross)': 'Gehalt Altersteilzeit (Brutto)',
                         'Total Taxes & GKV': 'Reale Steuern & GKV (Gesamt)',
                         'State Tax': 'Steuer auf ges. Rente',
+                        'bAV Tax': 'Steuer auf Betriebsrente',
                         'Priv Tax': 'Steuer auf priv. Rente',
                         'Stock Tax': 'Steuer auf Depotentnahme',
                         'Salary Tax': 'Steuer auf Gehalt',
@@ -249,14 +272,15 @@ def main_page():
                     df_payout = df[df['Alter'] > state.early_retirement_age].copy()
                     df_payout['Alter'] -= 1
                     df_payout['Reale Gesetzliche Rente (Brutto)'] /= 12
+                    df_payout['Reale Betriebsrente (Brutto)'] /= 12
                     df_payout['Reale Private Auszahlung (Brutto)'] /= 12
                     df_payout['Gehalt Altersteilzeit (Brutto)'] /= 12
                     df_payout['Reale Depotentnahme (Brutto)'] /= 12
                     
-                    fig2 = px.bar(df_payout, x='Alter', y=['Reale Gesetzliche Rente (Brutto)', 'Reale Private Auszahlung (Brutto)', 'Gehalt Altersteilzeit (Brutto)', 'Reale Depotentnahme (Brutto)'],
+                    fig2 = px.bar(df_payout, x='Alter', y=['Reale Gesetzliche Rente (Brutto)', 'Reale Betriebsrente (Brutto)', 'Reale Private Auszahlung (Brutto)', 'Gehalt Altersteilzeit (Brutto)', 'Reale Depotentnahme (Brutto)'],
                                         title="<b>Monatliche Gesamtauszahlung (Kaufkraftbereinigt)</b>",
                                         labels={'value': '<b>Auszahlung (€/Monat)</b>', 'variable': '<b>Einkommensquelle</b>', 'Alter': '<b>Alter</b>'},
-                                        color_discrete_sequence=['#ff7f0e', '#1f77b4', '#8c564b', '#2ca02c'])
+                                        color_discrete_sequence=['#ff7f0e', '#d62728', '#1f77b4', '#8c564b', '#2ca02c'])
                     fig2.update_layout(dragmode=False, margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
                     fig2.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
                     fig2.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
@@ -269,16 +293,17 @@ def main_page():
                     df_taxes = df[df['Alter'] > state.early_retirement_age].copy()
                     df_taxes['Alter'] -= 1
                     df_taxes['Steuer auf ges. Rente'] /= 12
+                    df_taxes['Steuer auf Betriebsrente'] /= 12
                     df_taxes['Steuer auf priv. Rente'] /= 12
                     df_taxes['Steuer auf Gehalt'] /= 12
                     df_taxes['Steuer auf Depotentnahme'] /= 12
                     df_taxes['Vorabpauschale (Depot)'] /= 12
                     df_taxes['GKV & PV Beiträge'] /= 12
                     
-                    fig3 = px.bar(df_taxes, x='Alter', y=['Steuer auf ges. Rente', 'Steuer auf priv. Rente', 'Steuer auf Gehalt', 'Steuer auf Depotentnahme', 'Vorabpauschale (Depot)', 'GKV & PV Beiträge'],
+                    fig3 = px.bar(df_taxes, x='Alter', y=['Steuer auf ges. Rente', 'Steuer auf Betriebsrente', 'Steuer auf priv. Rente', 'Steuer auf Gehalt', 'Steuer auf Depotentnahme', 'Vorabpauschale (Depot)', 'GKV & PV Beiträge'],
                                         title="<b>Monatliche Steuern & Abgaben (Kaufkraftbereinigt)</b>",
                                         labels={'value': '<b>Abgaben (€/Monat)</b>', 'variable': '<b>Abgabenart</b>', 'Alter': '<b>Alter</b>'},
-                                        color_discrete_sequence=['#d62728', '#9467bd', '#1f77b4', '#8c564b', '#17becf', '#e377c2'])
+                                        color_discrete_sequence=['#d62728', '#ff9896', '#9467bd', '#1f77b4', '#8c564b', '#17becf', '#e377c2'])
                     fig3.update_layout(dragmode=False, margin=dict(l=20, r=20, t=60, b=140), legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=chart_font, title_font=title_font)
                     fig3.update_xaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
                     fig3.update_yaxes(showgrid=True, gridwidth=1.2, gridcolor='rgba(128, 128, 128, 0.2)')
