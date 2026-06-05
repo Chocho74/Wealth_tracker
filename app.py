@@ -13,6 +13,7 @@ class AppState:
         self.do_partial_retirement = False
         self.partial_duration = 2
         self.partial_salary = 30000.0
+        self.aufstockung_rate = 20.0
         self.target_net = 3000
         self.inflation = 2.0
         self.return_pre = 6.0
@@ -142,7 +143,10 @@ def main_page():
                 ui.checkbox("In Altersteilzeit arbeiten?").bind_value(state, 'do_partial_retirement').classes('w-full dark:text-white')
                 with ui.column().bind_visibility_from(state, 'do_partial_retirement').classes('w-full pl-4 border-l-2 border-blue-200 dark:border-blue-800 mb-1'):
                     ui.number("Dauer (Jahre)", min=1, step=1).bind_value(state, 'partial_duration').classes('w-full mb-1')
-                    ui.input("Gehalt in Teilzeit (€/Jahr)").bind_value(state, 'partial_salary', forward=parse_money, backward=format_money).props('mask="#.###.###" reverse-fill-mask unmasked-value').classes('w-full mb-1')
+                    ui.input("Regelarbeitsentgelt (€/Jahr)").bind_value(state, 'partial_salary', forward=parse_money, backward=format_money).props('mask="#.###.###" reverse-fill-mask unmasked-value').classes('w-full mb-1')
+                    ui.label("Ihr reduziertes Bruttogehalt in Altersteilzeit (z.B. 50% des Vollzeitgehalts). Nicht die Gesamtauszahlung inkl. Aufstockung!").classes('text-xs text-gray-500 dark:text-gray-400 italic mb-1')
+                    ui.number("Aufstockungssatz (%)", min=0, max=200, step=1).bind_value(state, 'aufstockung_rate').classes('w-full mb-1')
+                    ui.label("Gesetzliches Minimum: 20%. Viele Tarifverträge bieten 60-80% und mehr. Der Aufstockungsbetrag ist steuerfrei und SV-frei (Progressionsvorbehalt beachten).").classes('text-xs text-gray-500 dark:text-gray-400 italic')
                 ui.input("Ziel-Netto im Ruhestand (€/Monat)").bind_value(state, 'target_net', forward=parse_money, backward=format_money).props('mask="#.###.###" reverse-fill-mask unmasked-value').classes('w-full')
 
             with ui.expansion('2. Wirtschaftliche Annahmen', icon='trending_up').classes('w-full bg-gray-100 dark:bg-gray-800 shadow-md rounded-md text-black dark:text-white').props('default-opened header-class="bg-gray-200 dark:bg-gray-900 text-base md:text-lg font-bold text-blue-900 dark:text-blue-100"'):
@@ -197,6 +201,7 @@ def main_page():
                 'current_age': int(state.current_age), 'end_age': int(state.end_age), 'early_retirement_age': int(state.early_retirement_age), 
                 'salary': float(state.salary), 'partial_salary': float(state.partial_salary), 'target_net_income': float(state.target_net),
                 'do_partial_ret': bool(state.do_partial_retirement), 'final_ret_age': int(final_retirement_age),
+                'aufstockung_rate': float(state.aufstockung_rate),
                 'inflation': float(state.inflation), 'return_pre': float(state.return_pre), 'return_post': float(state.return_post), 'basiszinssatz': float(state.basiszinssatz),
                 'stock_initial': float(state.stock_initial), 'stock_monthly': float(state.stock_monthly), 'etf_switches': int(state.etf_switches),
                 'priv_initial': float(state.priv_initial), 'priv_monthly': float(state.priv_monthly),
@@ -363,7 +368,7 @@ def main_page():
 
                 with ui.card().classes('w-full shadow-sm !bg-gray-50 dark:!bg-gray-800 !text-black dark:!text-white'):
                     ui.label('4. Kranken- und Pflegeversicherung (GKV/PV)').classes('text-base md:text-lg font-bold text-blue-800 dark:text-blue-300 border-b pb-2 w-full')
-                    ui.markdown('''Die Krankenversicherung kann im Ruhestand einer der größten Kostenfaktoren sein.\n\n* **Angestelltenphase:** Während Sie arbeiten, wird zur Ermittlung der Steuerbasis pauschal ein **Abzug von 10%** vom Bruttogehalt für die Sozialabgaben angenommen.\n\n* **Privatier (Frührente vor Alter 67):** Wenn Sie nicht arbeiten, sind Sie "freiwillig gesetzlich versichert". Sie müssen auf **Ihr gesamtes Einkommen** (Depotgewinne, private Rente) volle Kranken- und Pflegebeiträge zahlen (bis zur Bemessungsgrenze von ca. 69.750 €/Jahr). Das Mindesteinkommen beträgt 14.140 €/Jahr.\n\n* **Gesetzliche Rente (ab Alter 67):**\n    * **KVdR (Krankenversicherung der Rentner):** Wenn Sie die Voraussetzungen erfüllen, zahlen Sie GKV-Beiträge **nur auf Ihre gesetzliche Rente** (und nur den halben Beitragssatz für die KV!). Depot und private Rente sind in der Krankenversicherung komplett **abgabenfrei**.\n    * **Freiwillig versichert:** Erfüllen Sie die KVdR nicht, zahlen Sie auch im gesetzlichen Rentenalter auf **alle** Einkunftsarten den vollen Beitragssatz.''').classes('text-sm md:text-base !text-black dark:!text-gray-100')
+                    ui.markdown('''Die Krankenversicherung kann im Ruhestand einer der größten Kostenfaktoren sein.\n\n* **Angestelltenphase:** Während Sie arbeiten, wird zur Ermittlung der Steuerbasis pauschal ein **Abzug von ca. 21%** vom Bruttogehalt für die Sozialabgaben (KV, PV, RV, AV – Arbeitnehmeranteil) angenommen.\n\n* **Altersteilzeit:** Sozialversicherungsbeiträge (21%) werden nur auf das **Regelarbeitsentgelt** berechnet. Der **Aufstockungsbetrag** ist steuerfrei und SV-frei. Für die Rentenversicherung zahlt der Arbeitgeber zusätzlich Beiträge auf 80% des Regelarbeitsentgelts (§ 3 Abs. 1 Nr. 1b AltTZG).\n\n* **Privatier (Frührente vor Alter 67):** Wenn Sie nicht arbeiten, sind Sie "freiwillig gesetzlich versichert". Sie müssen auf **Ihr gesamtes Einkommen** (Depotgewinne, private Rente) volle Kranken- und Pflegebeiträge zahlen (bis zur Bemessungsgrenze von ca. 69.750 €/Jahr). Das Mindesteinkommen beträgt 14.140 €/Jahr.\n\n* **Gesetzliche Rente (ab Alter 67):**\n    * **KVdR (Krankenversicherung der Rentner):** Wenn Sie die Voraussetzungen erfüllen, zahlen Sie GKV-Beiträge **nur auf Ihre gesetzliche Rente** (und nur den halben Beitragssatz für die KV!). Depot und private Rente sind in der Krankenversicherung komplett **abgabenfrei**.\n    * **Freiwillig versichert:** Erfüllen Sie die KVdR nicht, zahlen Sie auch im gesetzlichen Rentenalter auf **alle** Einkunftsarten den vollen Beitragssatz.''').classes('text-sm md:text-base !text-black dark:!text-gray-100')
 
                 with ui.card().classes('w-full shadow-sm !bg-gray-50 dark:!bg-gray-800 !text-black dark:!text-white'):
                     ui.label('5. Einkommensteuer (ESt)').classes('text-base md:text-lg font-bold text-blue-800 dark:text-blue-300 border-b pb-2 w-full')

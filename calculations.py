@@ -70,6 +70,7 @@ class WealthSimulation:
         self.do_partial_ret = params.get('do_partial_ret', False)
         self.final_ret_age = params.get('final_ret_age', self.early_ret_age)
         self.partial_salary = params.get('partial_salary', 0.0)
+        self.aufstockung_rate = params.get('aufstockung_rate', 20.0) / 100.0
         self.state_ret_age = 67
         
         self.stock_balance = params['stock_initial']
@@ -116,7 +117,7 @@ class WealthSimulation:
             'bAV Payout (Gross)': 0.0,
             'Priv Payout (Gross)': 0.0,
             'Stock Withdrawal (Gross)': 0.0,
-            'Partial Salary (Gross)': 0.0,
+            'Partial Salary (Gross)': 0.0,  # Regelarbeitsentgelt + Aufstockung combined
             'Total Taxes & GKV': 0.0,
             'State Tax': 0.0,
             'bAV Tax': 0.0,
@@ -134,7 +135,7 @@ class WealthSimulation:
         self.sparerpauschbetrag = 1000.0
         self.deflator = (1 + self.inflation_rate) ** (self.current_year_age - self.age)
         
-        user_salary_gross, state_pension_gross = self._calc_state_pension_and_salary()
+        user_salary_gross, state_pension_gross, aufstockung_gross = self._calc_state_pension_and_salary()
         priv_payout_gross, taxable_gain = self._calc_private_pension()
         bav_payout_gross = self._calc_bav_pension()
         
@@ -142,45 +143,70 @@ class WealthSimulation:
             user_salary_gross, state_pension_gross, priv_payout_gross, bav_payout_gross
         )
         
-        salary_tax, state_tax, priv_tax, bav_tax, salary_gkv_deduction = self._calc_income_taxes(
-            user_salary_gross, state_pension_gross, taxable_gain, bav_payout_gross, gkv_cost
+        salary_tax, state_tax, priv_tax, bav_tax, salary_sv_deduction = self._calc_income_taxes(
+            user_salary_gross, state_pension_gross, taxable_gain, bav_payout_gross, gkv_cost, aufstockung_gross
         )
         
         shortfall = self._calc_shortfall(
-            user_salary_gross, state_pension_gross, priv_payout_gross, bav_payout_gross,
-            salary_tax, state_tax, priv_tax, bav_tax, salary_gkv_deduction, gkv_cost
+            user_salary_gross, aufstockung_gross, state_pension_gross, priv_payout_gross, bav_payout_gross,
+            salary_tax, state_tax, priv_tax, bav_tax, salary_sv_deduction, gkv_cost
         )
         
         stock_withdrawal, stock_tax_vp, stock_tax_withdrawal, additional_gkv = self._calc_stock_market(
             shortfall, is_privatier, base_income_for_gkv, min_gkv_income, gkv_cost
         )
         
-        gkv_cost += additional_gkv + salary_gkv_deduction
+        gkv_cost += additional_gkv + salary_sv_deduction
         total_taxes = salary_tax + state_tax + priv_tax + bav_tax + stock_tax_withdrawal + stock_tax_vp + gkv_cost
         
         self._record_year(
             state_pension_gross, priv_payout_gross, bav_payout_gross, stock_withdrawal, user_salary_gross,
-            total_taxes, state_tax, priv_tax, bav_tax, salary_tax, stock_tax_withdrawal, stock_tax_vp, gkv_cost
+            aufstockung_gross, total_taxes, state_tax, priv_tax, bav_tax, salary_tax, stock_tax_withdrawal,
+            stock_tax_vp, gkv_cost
         )
 
-    def _calc_state_pension_and_salary(self) -> Tuple[float, float]:
-        """Calculates state pension and gross salary, updating Entgeltpunkte."""
+    def _calc_state_pension_and_salary(self) -> Tuple[float, float, float]:
+        """Calculates state pension, gross salary, and Aufstockungsbetrag, updating Entgeltpunkte.
+        
+        Returns:
+            A tuple of (user_salary_gross, state_pension_gross, aufstockung_gross).
+            - user_salary_gross: The SV- and tax-liable salary (Regelarbeitsentgelt during ATZ).
+            - state_pension_gross: The annual state pension.
+            - aufstockung_gross: The Aufstockungsbetrag (steuerfrei, SV-frei, Progressionsvorbehalt).
+        """
         state_pension_gross = 0.0
         user_salary_gross = 0.0
+        aufstockung_gross = 0.0
+        
+        is_atz_phase = (self.do_partial_ret and self.current_year_age > self.early_ret_age 
+                        and self.current_year_age <= self.final_ret_age)
         
         if self.current_year_age <= self.early_ret_age:
+            # Full-time employment phase
             user_salary_gross = self.params['salary'] * self.deflator
             salary_for_ep = max(0, (user_salary_gross / self.deflator) - self.bav_entgelt_yearly)
             self.ep += min(salary_for_ep, 101400) / 51944.0
-        elif self.do_partial_ret and self.current_year_age > self.early_ret_age and self.current_year_age <= self.final_ret_age:
+        elif is_atz_phase:
+            # Altersteilzeit phase
+            # user_salary_gross = Regelarbeitsentgelt (SV-pflichtig, steuerpflichtig)
             user_salary_gross = self.partial_salary * self.deflator
-            salary_for_ep = max(0, (user_salary_gross / self.deflator) - self.bav_entgelt_yearly)
+            # Aufstockungsbetrag: steuerfrei, SV-frei, but Progressionsvorbehalt
+            aufstockung_gross = user_salary_gross * self.aufstockung_rate
+            
+            # Entgeltpunkte in ATZ:
+            # Normal EP from Regelarbeitsentgelt (employee + employer each pay 9.3% RV)
+            # PLUS: employer pays additional RV on 80% of Regelarbeitsentgelt (§ 3 Abs. 1 Nr. 1b AltTZG)
+            # This means the effective salary for EP = Regelarbeitsentgelt + 80% * Regelarbeitsentgelt
+            real_regelarbeitsentgelt = self.partial_salary  # already real (before deflator)
+            salary_for_ep_base = max(0, real_regelarbeitsentgelt - self.bav_entgelt_yearly)
+            zusatz_rv_basis = real_regelarbeitsentgelt * 0.80
+            salary_for_ep = salary_for_ep_base + zusatz_rv_basis
             self.ep += min(salary_for_ep, 101400) / 51944.0
 
         if self.current_year_age > self.state_ret_age:
             state_pension_gross = self.ep * 42.52 * 12 * self.deflator
             
-        return user_salary_gross, state_pension_gross
+        return user_salary_gross, state_pension_gross, aufstockung_gross
 
     def _calc_bav_pension(self) -> float:
         """Calculates the gross payout from Betriebsrente."""
@@ -314,13 +340,37 @@ class WealthSimulation:
                 
         return gkv_cost, base_income_for_gkv, min_gkv_income, is_privatier
 
-    def _calc_income_taxes(self, user_salary_gross: float, state_pension_gross: float, taxable_gain: float, bav_payout_gross: float, gkv_cost: float) -> Tuple[float, float, float, float, float]:
-        """Calculates income taxes, distributing them proportionally among sources."""
-        salary_gkv_deduction = user_salary_gross * 0.21 if user_salary_gross > 0 else 0.0
+    def _calc_income_taxes(self, user_salary_gross: float, state_pension_gross: float, taxable_gain: float, bav_payout_gross: float, gkv_cost: float, aufstockung_gross: float = 0.0) -> Tuple[float, float, float, float, float]:
+        """Calculates income taxes, distributing them proportionally among sources.
         
-        nominal_taxable_income_total = max(0, user_salary_gross + state_pension_gross + taxable_gain + bav_payout_gross - gkv_cost - salary_gkv_deduction)
-        real_taxable_income_total = nominal_taxable_income_total / self.deflator
-        real_tax_total = calc_income_tax_2026(real_taxable_income_total)
+        The social security deduction (21%) applies only to user_salary_gross (Regelarbeitsentgelt).
+        The Aufstockungsbetrag is steuerfrei but subject to Progressionsvorbehalt:
+        the tax is computed on (taxable_income + aufstockung), then the tax that would
+        fall on the aufstockung alone is subtracted, so only the marginal rate increase
+        from the Progressionsvorbehalt is captured.
+        """
+        # SV deduction: 21% of Regelarbeitsentgelt only (covers KV, PV, RV, AV employee share)
+        salary_sv_deduction = user_salary_gross * 0.21 if user_salary_gross > 0 else 0.0
+        
+        # Taxable income EXCLUDING aufstockung (which is steuerfrei)
+        nominal_taxable_income = max(0, user_salary_gross + state_pension_gross + taxable_gain + bav_payout_gross - gkv_cost - salary_sv_deduction)
+        
+        if aufstockung_gross > 0:
+            # Progressionsvorbehalt: compute the tax rate as if aufstockung were included,
+            # then apply that higher rate to only the taxable income.
+            # Step 1: Tax rate on (taxable_income + aufstockung)
+            nominal_with_aufstockung = nominal_taxable_income + aufstockung_gross
+            real_with_aufstockung = nominal_with_aufstockung / self.deflator
+            tax_with_aufstockung = calc_income_tax_2026(real_with_aufstockung)
+            # Step 2: Effective rate from the combined amount
+            effective_rate = tax_with_aufstockung / real_with_aufstockung if real_with_aufstockung > 0 else 0.0
+            # Step 3: Apply that rate to only the taxable income (not the aufstockung)
+            real_taxable_income = nominal_taxable_income / self.deflator
+            real_tax_total = real_taxable_income * effective_rate
+        else:
+            real_taxable_income = nominal_taxable_income / self.deflator
+            real_tax_total = calc_income_tax_2026(real_taxable_income)
+        
         total_nominal_income_tax = real_tax_total * self.deflator
 
         total_taxable_before_deductions = user_salary_gross + state_pension_gross + taxable_gain + bav_payout_gross
@@ -335,14 +385,22 @@ class WealthSimulation:
             priv_tax = 0.0
             bav_tax = 0.0
             
-        return salary_tax, state_tax, priv_tax, bav_tax, salary_gkv_deduction
+        return salary_tax, state_tax, priv_tax, bav_tax, salary_sv_deduction
 
-    def _calc_shortfall(self, user_salary_gross: float, state_pension_gross: float, priv_payout_gross: float, bav_payout_gross: float, salary_tax: float, state_tax: float, priv_tax: float, bav_tax: float, salary_gkv_deduction: float, gkv_cost: float) -> float:
-        """Determines the gap between required net income and the net income realized so far."""
-        target_phase_started = self.current_year_age > min(self.early_ret_age, self.priv_payout_age)
+    def _calc_shortfall(self, user_salary_gross: float, aufstockung_gross: float, state_pension_gross: float, priv_payout_gross: float, bav_payout_gross: float, salary_tax: float, state_tax: float, priv_tax: float, bav_tax: float, salary_sv_deduction: float, gkv_cost: float) -> float:
+        """Determines the gap between required net income and the net income realized so far.
+        
+        The Aufstockungsbetrag is included in available income (the employee receives it
+        as net cash since it is both steuerfrei and SV-frei).
+        """
+        target_phase_started = self.current_year_age > self.early_ret_age
         shortfall = 0.0
         if target_phase_started:
-            net_income_so_far = user_salary_gross + state_pension_gross + priv_payout_gross + bav_payout_gross - salary_tax - state_tax - priv_tax - bav_tax - salary_gkv_deduction - gkv_cost
+            # aufstockung_gross is net cash to the employee (no tax, no SV)
+            net_income_so_far = (user_salary_gross + aufstockung_gross + state_pension_gross 
+                                 + priv_payout_gross + bav_payout_gross 
+                                 - salary_tax - state_tax - priv_tax - bav_tax 
+                                 - salary_sv_deduction - gkv_cost)
             target_net_nominal = (self.params['target_net_income'] * 12) * self.deflator
             shortfall = max(0, target_net_nominal - net_income_so_far)
         return shortfall
@@ -359,6 +417,9 @@ class WealthSimulation:
         
         for lot in self.stock_lots:
             lot['value'] *= (1 + self.ret)
+            
+        existing_lots = list(self.stock_lots)
+        existing_lots_value = sum(lot['value'] for lot in existing_lots)
             
         if self.current_year_age <= self.early_ret_age:
             # Accumulation phase
@@ -381,10 +442,10 @@ class WealthSimulation:
             vp_tax, self.sparerpauschbetrag = calc_vorabpauschale(stock_start, stock_balance_before_vp, self.params['basiszinssatz']/100.0, self.sparerpauschbetrag, contrib=contrib)
             stock_tax_vp = vp_tax
             
-            if stock_balance_before_vp > 0:
-                vp_base_total = min(stock_start * (self.params['basiszinssatz']/100.0) * 0.7, max(0, stock_balance_before_vp - stock_start - contrib))
-                for lot in self.stock_lots:
-                    fraction = lot['value'] / stock_balance_before_vp
+            if existing_lots_value > 0:
+                vp_base_total = min(stock_start * (self.params['basiszinssatz']/100.0) * 0.7, max(0, existing_lots_value - stock_start))
+                for lot in existing_lots:
+                    fraction = lot['value'] / existing_lots_value
                     lot['basis'] += vp_base_total * fraction
                     lot['value'] -= vp_tax * fraction
             self.stock_balance = sum(lot['value'] for lot in self.stock_lots)
@@ -394,10 +455,10 @@ class WealthSimulation:
             vp_tax, self.sparerpauschbetrag = calc_vorabpauschale(stock_start, stock_balance_before_vp, self.params['basiszinssatz']/100.0, self.sparerpauschbetrag)
             stock_tax_vp = vp_tax
             
-            if stock_balance_before_vp > 0:
-                vp_base_total = min(stock_start * (self.params['basiszinssatz']/100.0) * 0.7, max(0, stock_balance_before_vp - stock_start))
-                for lot in self.stock_lots:
-                    fraction = lot['value'] / stock_balance_before_vp
+            if existing_lots_value > 0:
+                vp_base_total = min(stock_start * (self.params['basiszinssatz']/100.0) * 0.7, max(0, existing_lots_value - stock_start))
+                for lot in existing_lots:
+                    fraction = lot['value'] / existing_lots_value
                     lot['basis'] += vp_base_total * fraction
                     lot['value'] -= vp_tax * fraction
             self.stock_balance = sum(lot['value'] for lot in self.stock_lots)
@@ -502,9 +563,12 @@ class WealthSimulation:
             
         return best_gross
 
-    def _record_year(self, state_pension_gross: float, priv_payout_gross: float, bav_payout_gross: float, stock_withdrawal: float, user_salary_gross: float, total_taxes: float, state_tax: float, priv_tax: float, bav_tax: float, salary_tax: float, stock_tax_withdrawal: float, stock_tax_vp: float, gkv_cost: float):
+    def _record_year(self, state_pension_gross: float, priv_payout_gross: float, bav_payout_gross: float, stock_withdrawal: float, user_salary_gross: float, aufstockung_gross: float, total_taxes: float, state_tax: float, priv_tax: float, bav_tax: float, salary_tax: float, stock_tax_withdrawal: float, stock_tax_vp: float, gkv_cost: float):
         """Appends the results of the simulated year to the records."""
-        partial_salary_gross = user_salary_gross / self.deflator if (self.do_partial_ret and self.current_year_age > self.early_ret_age and self.current_year_age <= self.final_ret_age) else 0.0
+        is_atz_phase = (self.do_partial_ret and self.current_year_age > self.early_ret_age 
+                        and self.current_year_age <= self.final_ret_age)
+        # During ATZ: show Regelarbeitsentgelt + Aufstockung combined as the partial salary
+        partial_salary_gross = (user_salary_gross + aufstockung_gross) / self.deflator if is_atz_phase else 0.0
         
         self.records.append({
             'Age': self.current_year_age,

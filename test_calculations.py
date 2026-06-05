@@ -306,5 +306,94 @@ class TestCalculations(unittest.TestCase):
         # Real stock balance should decrease without growth
         self.assertTrue(df.iloc[-1]['Real Stock Balance'] <= df.iloc[0]['Real Stock Balance'])
 
+    def test_vorabpauschale_lot_distribution(self):
+        """
+        Verify that during the accumulation phase:
+        - The basis of a newly contributed lot is NOT adjusted by the Vorabpauschale.
+        - Only existing lots (lots that existed at the start of the year) have their basis adjusted.
+        """
+        from calculations import WealthSimulation
+        params = {
+            'current_age': 30,
+            'end_age': 32,
+            'early_retirement_age': 35,
+            'stock_initial': 10000.0,
+            'priv_initial': 0.0,
+            'current_ep': 10,
+            'inflation': 0.0,  # 0% inflation to keep values simple
+            'return_pre': 10.0,  # 10% returns
+            'return_post': 4.0,
+            'salary': 50000.0,
+            'partial_salary': 0.0,
+            'priv_fee_contrib': 0.0,
+            'priv_fee_balance': 0.0,
+            'priv_monthly': 0.0,
+            'kv_rate': 14.6,
+            'pv_rate': 3.6,
+            'gkv_status': 'KVdR',
+            'target_net_income': 3000.0,
+            'stock_monthly': 1000.0,  # Contribution of 12000.0 per year
+            'basiszinssatz': 3.2,     # High basis interest rate to trigger Vorabpauschale
+        }
+        
+        sim = WealthSimulation(params)
+        sim._record_initial_state()
+        sim.current_year_age = 31
+        sim._simulate_year()
+        
+        # Verify stock lots at the end of Year 1
+        # The initial lot (existing at start of year) should have its basis adjusted.
+        # The new contribution lot (added during the year) should have its basis exactly equal to the contribution amount, without any adjustment.
+        self.assertEqual(len(sim.stock_lots), 2)
+        
+        initial_lot = sim.stock_lots[0]
+        new_lot = sim.stock_lots[1]
+        
+        # New contribution lot:
+        contrib_amount = 1000.0 * 12.0 # 12000.0
+        self.assertAlmostEqual(new_lot['basis'], contrib_amount)
+        self.assertAlmostEqual(new_lot['value'], contrib_amount)
+        
+        # Initial lot: basis should have increased
+        self.assertGreater(initial_lot['basis'], 10000.0)
+
+    def test_shortfall_start_age(self):
+        """
+        Verify that shortfall and stock withdrawals do not trigger before the early retirement age,
+        even if the user's age is greater than the private pension payout age (62) and they have a low salary.
+        """
+        params = {
+            'current_age': 60,
+            'end_age': 70,
+            'early_retirement_age': 67,
+            'stock_initial': 100000.0,
+            'priv_initial': 0.0,
+            'current_ep': 10,
+            'inflation': 0.0,
+            'return_pre': 5.0,
+            'return_post': 4.0,
+            'salary': 20000.0,  # low salary
+            'partial_salary': 0.0,
+            'priv_fee_contrib': 0.0,
+            'priv_fee_balance': 0.0,
+            'priv_monthly': 0.0,
+            'kv_rate': 14.6,
+            'pv_rate': 3.6,
+            'gkv_status': 'KVdR',
+            'target_net_income': 3000.0,  # high target, salary will not suffice
+            'stock_monthly': 0.0,
+            'basiszinssatz': 0.0
+        }
+        df = simulate_wealth(params)
+        df.set_index('Age', inplace=True)
+        
+        # At age 65 (between 62 and 67), the user is still employed.
+        # No stock withdrawal should be made to cover target shortfall.
+        self.assertAlmostEqual(df.loc[65, 'Stock Withdrawal (Gross)'], 0.0)
+        
+        # At age 68 (after early retirement age), the user is retired.
+        # Stock withdrawal should be triggered to cover the target net income shortfall.
+        self.assertGreater(df.loc[68, 'Stock Withdrawal (Gross)'], 0.0)
+
 if __name__ == '__main__':
     unittest.main()

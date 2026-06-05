@@ -77,12 +77,16 @@ The simulation rigorously applies statutory health insurance rules based on the 
 *   **Mindesteinkommen:** A minimum assessable income of **€14,140** per year applies to voluntarily insured individuals.
 
 ### Scenarios
-1.  **Employed (Before Early Retirement):** GKV is deducted as part of the payroll net calculation; only the employee portion is considered implicitly. (In the tax logic, a flat 10% deduction is applied to salary for tax-base calculation).
-2.  **Privatier (Early Retirement to Age 67):**
+1.  **Employed (Before Early Retirement):** GKV is deducted as part of the payroll net calculation; the employee's total social security share (KV, PV, RV, AV) of approximately 21% is deducted from the gross salary for tax-base calculation.
+2.  **Altersteilzeit (Partial Retirement):**
+    *   Social security (21%) is calculated only on the **Regelarbeitsentgelt** (reduced salary).
+    *   The **Aufstockungsbetrag** is steuerfrei and SV-frei, but subject to Progressionsvorbehalt.
+    *   The employer pays additional RV contributions on 80% of the Regelarbeitsentgelt (§ 3 Abs. 1 Nr. 1b AltTZG), improving the employee's Entgeltpunkte.
+3.  **Privatier (Early Retirement to Age 67):**
     *   The user is considered voluntarily insured in the GKV.
     *   **All income** is assessed: Private Pension payouts + Stock Market gains (not the principal withdrawal).
     *   The full GKV/PV rate (approx. 17.5% + PV) is applied up to the BBG.
-3.  **State Retirement (Age 67+):**
+4.  **State Retirement (Age 67+):**
     *   **KVdR (Krankenversicherung der Rentner):** If the user qualifies, they only pay health insurance on their state pension. Furthermore, they only pay half the KV rate (the state pays the other half) and the full PV rate. Private pensions and stock gains are completely **free** from GKV contributions.
     *   **Voluntary Insurance (if KVdR is not met):** The user continues to pay the full GKV/PV rate on **all** income streams (State Pension, Private Pension, Stock Gains) up to the BBG.
 
